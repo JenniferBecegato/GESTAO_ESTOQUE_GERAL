@@ -6,7 +6,7 @@ internal static class BarcodeService
 {
     internal static string Generate(Inventory inventory)
     {
-        var codes=inventory.Products.SelectMany(p=>new[]{p.Code}.Concat(p.Packages.Select(x=>x.Code))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var codes=inventory.Products.SelectMany(p=>new[]{p.Code}.Concat(p.CodeAliases).Concat(p.Packages.Select(x=>x.Code))).ToHashSet(StringComparer.OrdinalIgnoreCase);
         for(int attempt=0;attempt<100;attempt++)
         {
             string body="20"+RandomNumberGenerator.GetInt32(1000000000).ToString("D9",CultureInfo.InvariantCulture)+RandomNumberGenerator.GetInt32(10);

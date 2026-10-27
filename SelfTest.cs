@@ -35,6 +35,7 @@ internal static class SelfTest
             {
                 File.AppendAllText(Path.Combine(directory,"progresso.txt"),"Janela criada; aguardando WebView2\n");
                 await form.Ready.Task.WaitAsync(TimeSpan.FromSeconds(40));
+                await Script("window.addEventListener('error',e=>window.lastScriptError=e.message)");
                 form.Browser.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled=false;
                 form.Browser.CoreWebView2.ScriptDialogOpening += (_,e) => { File.AppendAllText(Path.Combine(directory,"progresso.txt"),"Aviso: " + e.Message + "\n"); e.Accept(); };
                 Check(await Script("produtos.length===0 && hist.length===0 && compras.length===0")=="true","Banco vazio sem dados fictícios");
@@ -45,13 +46,13 @@ internal static class SelfTest
                 Check(await Script("document.getElementById('dashboard-export-pdf').getBoundingClientRect().right>=document.querySelector('.dashboard-heading').getBoundingClientRect().right-1")=="true","Exportar PDF no canto superior direito da página principal");
                 await form.ExportPdf(Path.Combine(directory,"pagina-principal.pdf"));
                 await Script("desktopTest.sync(window.dashboardInventory);show(0)");
-                await Script("window.savedPurchases=compras;compras=[{data:'2026-10-10',valor:100,ref:120,local:'Loja Outubro',unknown:false},{data:'2026-09-10',valor:50,ref:55,local:'Loja Setembro',unknown:false},{data:'2025-10-10',valor:30,ref:null,local:'Loja 2025',unknown:false}];show(0);document.getElementById('finance-month').value='10';document.getElementById('finance-year').value='2026';document.getElementById('finance-year').dispatchEvent(new Event('change'))");
+                await Script("window.savedPurchases=compras;compras=[{data:'2026-10-10',valor:100,ref:120,local:'Loja Outubro',unknown:false},{data:'2026-09-10',valor:50,ref:55,local:'Loja Setembro',unknown:false},{data:'2025-10-10',valor:30,ref:null,local:'Loja 2025',unknown:false}];show(0);document.getElementById('finance-period').value='2026-10';document.getElementById('finance-period').dispatchEvent(new Event('change'))");
                 Check(await Script("[...document.querySelectorAll('#page .panel')].find(p=>p.querySelector('h2')?.textContent==='Resumo financeiro').textContent.includes('Loja Outubro')&&!document.querySelector('#page').textContent.includes('Loja Setembro')")=="true","Resumo financeiro filtra mês e ano selecionados");
-                await Script("document.getElementById('finance-year').value='2025';document.getElementById('finance-year').dispatchEvent(new Event('change'))");
+                await Script("document.getElementById('finance-period').value='2025-10';document.getElementById('finance-period').dispatchEvent(new Event('change'))");
                 Check(await Script("document.querySelector('#page').textContent.includes('Loja 2025')&&document.querySelector('#page').textContent.includes('Não calculada')")=="true","Mesmo mês de outro ano e compras sem referência");
-                await Script("document.getElementById('finance-month').value='1';document.getElementById('finance-month').dispatchEvent(new Event('change'))");
+                await Script("document.getElementById('finance-period').value='2025-01';document.getElementById('finance-period').dispatchEvent(new Event('change'))");
                 Check(await Script("document.querySelector('#page').textContent.includes('Sem dados')")=="true","Mês sem compras não traz dados de outros períodos");
-                await Script("compras=window.savedPurchases;show(0);document.getElementById('finance-month').value=String(new Date().getMonth()+1);document.getElementById('finance-year').value=String(new Date().getFullYear());document.getElementById('finance-year').dispatchEvent(new Event('change'))");
+                await Script("compras=window.savedPurchases;show(0);document.getElementById('finance-period').value=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');document.getElementById('finance-period').dispatchEvent(new Event('change'))");
                 await Script("show(8)");
                 Check(await Script("(()=>{const main=document.querySelector('main'),header=document.querySelector('.bar'),nav=document.querySelector('nav');const h=header.getBoundingClientRect().top,n=nav.getBoundingClientRect().top;main.scrollTop=600;return main.scrollTop===600&&window.scrollY===0&&header.getBoundingClientRect().top===h&&nav.getBoundingClientRect().top===n;})()")=="true","Somente o conteúdo rola; cabeçalho e menu permanecem fixos");
                 await Script("document.querySelector('main').scrollTop=0");
@@ -86,6 +87,16 @@ internal static class SelfTest
                 await Script("show(4);document.getElementById('codigo').value='7891000000010';buscar();document.getElementById('q').value='2';document.getElementById('pessoa').value='Validação';document.getElementById('setor').value='Banheiro';movimentar();");
                 await Wait("produtos[0].saldo===10");
                 Check(await Script("hist.length===2 && saidasDemo[0].custo===20")=="true","Saída salva com custo médio preservado");
+                await Script("show(3);document.getElementById('codigo').value='456';buscar();document.getElementById('link-existing-product').click()");
+                await Wait("document.getElementById('link-code-dialog')?.open===true");
+                Check(await Script("document.getElementById('link-product').options.length===1 && document.getElementById('link-save').disabled")=="true","Código não encontrado oferece lista de produtos sem selecionar automaticamente");
+                await Capture("vincular-codigo");
+                await Script("document.getElementById('link-product-search').value='Papel';document.getElementById('link-product-search').dispatchEvent(new Event('input'));document.getElementById('link-product').value=desktopTest.inventory.Products[0].Id;document.getElementById('link-product').dispatchEvent(new Event('change'));document.getElementById('link-save').click()");
+                await Wait("desktopTest.inventory.Products[0].CodeAliases?.includes('456')===true");
+                Check(await Script("selected?.code==='7891000000010' && selected.saldo===10 && hist.length===2")=="true","Salvar vínculo reconhece o novo código sem mudar saldo ou histórico");
+                await Script("document.getElementById('codigo').value='7891000000010';buscar()");
+                Check(await Script("selected?.saldo===10")=="true","Código antigo continua reconhecendo o mesmo produto");
+                await Script("document.getElementById('codigo').value='';document.getElementById('codigo').focus()");
                 await Wait("document.activeElement===document.getElementById('codigo')");
                 Check(await Script("document.getElementById('codigo').value===''")=="true","Leitor pronto para o próximo código após confirmar");
                 foreach(int screen in new[]{3,4})
@@ -105,6 +116,12 @@ internal static class SelfTest
                 await Script("window.internalTestCode=document.getElementById('code').value;document.getElementById('nome').value='Vassoura sem código';document.getElementById('un').value='unidade';cadastrar();");
                 await Wait("produtos.length===2");
                 Check(await Script("!document.getElementById('print-saved-label').hidden")=="true","Código gerado salvo e botão de etiqueta disponível");
+                await Script("window.duplicateLink='pending';desktopTest.request('linkCode',{productId:desktopTest.inventory.Products[1].Id,code:'456'}).then(()=>window.duplicateLink='accepted').catch(()=>window.duplicateLink='blocked')");
+                await Wait("window.duplicateLink!=='pending'");
+                Check(await Script("window.duplicateLink==='blocked'")=="true","Mesmo código não pode pertencer a dois produtos");
+                var duplicateProduct=new Product { Code="456",Name="Duplicado",Unit="unidade" };
+                bool aliasCollision=false;using(var dbAlias=new InventoryStore(dbPath)){try{InventoryRules.Validate(duplicateProduct,dbAlias.Load());}catch(ArgumentException){aliasCollision=true;}}
+                Check(aliasCollision,"Novo cadastro não pode reutilizar um código já vinculado");
                 await Script("document.getElementById('print-saved-label').click()");
                 await Wait("document.getElementById('label-dialog')?.open===true");
                 await Wait("document.querySelector('#label-print-area img').complete");
@@ -127,12 +144,26 @@ internal static class SelfTest
                 await Wait("produtos.find(p=>p.code===window.internalTestCode).saldo===50");
                 await Script("document.getElementById('entry-label-action').click()");
                 await Wait("document.getElementById('label-dialog')?.open===true");
-                Check(await Script("document.getElementById('label-count').value==='50' && document.querySelectorAll('.barcode-label').length===50")=="true","Entrada de 1 caixa com 50 unidades sugere exatamente 50 etiquetas");
+                await Wait("document.getElementById('label-print').disabled===false");
+                Check(await Script("document.getElementById('label-count').value==='1' && document.querySelectorAll('.barcode-label').length===1 && document.getElementById('label-target').value==='0'")=="true","Uma caixa recebida sugere uma etiqueta de embalagem");
+                await Script("document.getElementById('label-target').value='unit';document.getElementById('label-target').dispatchEvent(new Event('change'))");
+                Check(await Script("document.getElementById('label-count').value==='50'")=="true","Escolher produtos avulsos gera 50 etiquetas de unidade");
                 await Script("document.getElementById('label-size').value='30,20';document.getElementById('label-size').dispatchEvent(new Event('change'));document.body.classList.add('printing-labels')");
                 Check(await Script("document.querySelectorAll('.label-sheet').length===1 && document.querySelectorAll('.barcode-label').length===50 && !document.getElementById('label-media') && !document.getElementById('label-print-direct')")=="true","50 etiquetas compactas na mesma folha, somente A4 e PDF");
                 await form.ExportPdf(Path.Combine(directory,"etiquetas-50-A4.pdf"),true,210,297);
                 await form.ExportPdf(Path.Combine(directory,"etiquetas-50-A4-paisagem.pdf"),true,210,297,true);
                 await Script("document.getElementById('label-close').click()");
+                await Script("window.packReady=false;(()=>{const p=desktopTest.inventory.Products.find(x=>x.Code===window.internalTestCode);desktopTest.request('saveProduct',{...p,Packages:[...p.Packages,{Name:'Pacote',Factor:3,Code:''}]}).then(s=>{desktopTest.sync(s);window.packReady=true;});})()");
+                await Wait("window.packReady");
+                await Script("desktopTest.openLabel(desktopTest.inventory.Products.find(p=>p.Code===window.internalTestCode).Id,null,'5 pacotes com 3 unidades',{Quantity:5,Factor:3,Converted:15})");
+                await Wait("document.getElementById('label-dialog')?.open===true && document.getElementById('label-print').disabled===false");
+                Check(await Script("document.getElementById('label-count').value==='5' && document.querySelectorAll('.barcode-label').length===5 && new Set([...document.querySelectorAll('.barcode-label code')].map(c=>c.textContent)).size===1 && document.querySelector('.barcode-label code').textContent!==window.internalTestCode")=="true","5 pacotes com 3 unidades geram 5 etiquetas iguais com código próprio do pacote");
+                await Script("window.packCode=document.querySelector('.barcode-label code').textContent;document.body.classList.add('printing-labels')");
+                await form.ExportPdf(Path.Combine(directory,"etiquetas-5-pacotes.pdf"),true,210,297);
+                await Script("document.getElementById('label-target').value='unit';document.getElementById('label-target').dispatchEvent(new Event('change'))");
+                Check(await Script("document.getElementById('label-count').value==='15' && document.querySelector('.barcode-label code').textContent===window.internalTestCode")=="true","Alternativa avulsa: 15 etiquetas com o código da unidade");
+                await Script("document.getElementById('label-close').click();show(4);document.getElementById('codigo').value=window.packCode;buscar()");
+                Check(await Script("selected?.code===window.internalTestCode && document.getElementById('tipoemb').value==='3'")=="true","Leitura do código do pacote seleciona conversão de 3 unidades");
                 await Script("window.testReject='pending';desktopTest.request('move',{ProductId:desktopTest.inventory.Products[0].Id,Type:'Saída',Quantity:100,Factor:1,Person:'Teste'}).then(()=>window.testReject='failed').catch(()=>window.testReject='blocked');");
                 await Wait("window.testReject!=='pending'");
                 Check(await Script("window.testReject==='blocked' && produtos[0].saldo===10")=="true","Bloqueio de saída acima do saldo sem alterar os dados");
@@ -154,7 +185,7 @@ internal static class SelfTest
                     Check(File.Exists(pdfPath)&&new FileInfo(pdfPath).Length>1000,"PDF gerado diretamente: "+tab);
                 }
                 await Script("desktopTest.preparePdf()");
-                Check(await Script("document.querySelectorAll('#all-reports-pdf .pdf-report-section').length===7 && abaRel==='Locais de compra'")=="true","PDF reúne as sete abas e preserva a aba selecionada");
+                Check(await Script("document.querySelectorAll('#all-reports-pdf .pdf-report-section').length===7 && abaRel==='Locais de compra'")=="true","PDF reúne as sete abas e preserva a aba selecionada: "+await Script("JSON.stringify({current,abaRel,count:document.querySelectorAll('#all-reports-pdf .pdf-report-section').length,error:window.lastScriptError})"));
                 await form.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setEmulatedMedia","{\"media\":\"print\"}");
                 Check(await Script("getComputedStyle(document.querySelector('nav')).display==='none' && getComputedStyle(document.querySelector('.badge-top')).display==='none' && getComputedStyle(document.querySelector('.report-tabs')).display==='none' && getComputedStyle(document.querySelector('.report-filter-panel')).display==='none' && getComputedStyle(document.querySelector('.pdf-filter-summary')).display==='block'")=="true","PDF sem menu, aviso do computador, botões e controles de filtro");
                 await form.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setEmulatedMedia","{\"media\":\"\"}");
@@ -162,6 +193,13 @@ internal static class SelfTest
                 Check(await Script("[...document.querySelectorAll('#all-reports-pdf .pdf-filter-summary')].every(x=>x.textContent.includes('Copa')&&x.textContent.includes('Atacado')&&x.textContent.includes('01/10/2026')) && [...document.querySelectorAll('#all-reports-pdf .pdf-report-section')].every(x=>!x.textContent.includes('Papel higiênico'))")=="true","Mesma categoria, local e período aplicados em todas as abas do PDF");
                 await form.ExportPdf(Path.Combine(directory,"relatorio-completo-filtrado.pdf"));
                 await Script("categoriaRel='';localRel='';desenhaRelatorio()");
+                await Script("show(5);document.getElementById('purchases-product').value='Papel';document.getElementById('purchases-product').dispatchEvent(new Event('input'))");
+                Check(await Script("document.querySelectorAll('#purchases-history-table tbody tr').length===1 && document.getElementById('purchases-history-table').textContent.includes('Papel higiênico') && !document.getElementById('purchases-history-table').textContent.includes('Vassoura')")=="true","Histórico de compras filtra o produto sem alterar as movimentações");
+                await form.ExportPdf(Path.Combine(directory,"historico-compras-filtrado.pdf"));
+                await Script("document.getElementById('purchases-start').value='2070-01-01';document.getElementById('purchases-start').dispatchEvent(new Event('input'))");
+                Check(await Script("document.getElementById('purchases-history-table').textContent.includes('Nenhuma compra encontrada')")=="true","Histórico de compras respeita o período");
+                await Script("document.getElementById('purchases-clear').click()");
+                Check(await Script("document.querySelectorAll('#purchases-history-table tbody tr').length===2")=="true","Limpar filtros restaura as compras registradas");
                 foreach(int screen in new[]{0,5,8,6})
                 {
                     await Script($"show({screen})");
@@ -173,7 +211,7 @@ internal static class SelfTest
                         Check(File.Exists(target)&&new FileInfo(target).Length>1000,"A4 "+(horizontal?"paisagem":"retrato")+" na tela "+screen);
                     }
                 }
-                using(var db = new InventoryStore(dbPath)) Check(db.Load().Products.Single(p=>p.Code=="7891000000010").Balance==10 && db.Load().Movements.Count==3,"Reabertura do SQLite preserva saldo e histórico");
+                using(var db = new InventoryStore(dbPath)) Check(db.Load().Products.Single(p=>p.Code=="7891000000010").Balance==10 && db.Load().Products.Single(p=>p.Code=="7891000000010").CodeAliases.Contains("456") && db.Load().Movements.Count==3,"Reabertura do SQLite preserva códigos vinculados, saldo e histórico");
                 // Compara diretamente com o arquivo recebido, no mesmo motor e viewport.
                 var navigated = new TaskCompletionSource();
                 void Loaded(object? s,CoreWebView2NavigationCompletedEventArgs e) => navigated.TrySetResult();
@@ -193,6 +231,7 @@ internal static class SelfTest
         Application.Run(form);
     }
 }
+
 
 
 

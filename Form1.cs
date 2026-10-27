@@ -82,6 +82,10 @@ public partial class Form1 : Form
                 case "load": Reply(id,state); break;
                 case "ready": Ready.TrySetResult(); Reply(id,true); break;
                 case "generateCode": Reply(id,BarcodeService.Generate(state)); break;
+                case "linkCode":
+                    Guid linkProductId=payload.GetProperty("productId").GetGuid();
+                    string linkCode=payload.GetProperty("code").GetString()??"";
+                    Commit(s=>InventoryRules.LinkCode(s,linkProductId,linkCode));Reply(id,state);break;
                 case "getLabelProfile":
                     var profileFile=Path.Combine(Path.GetDirectoryName(databasePath??InventoryStore.DataPath)!,"label-profile.json");
                     Reply(id,File.Exists(profileFile)?JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(profileFile)):null);break;
@@ -91,6 +95,16 @@ public partial class Form1 : Form
                 case "barcode":
                     var labelProduct=state.Products.SingleOrDefault(p=>p.Id==payload.GetGuid()) ?? throw new ArgumentException("Salve o produto antes de imprimir a etiqueta.");
                     Reply(id,new { id=labelProduct.Id,code=labelProduct.Code,name=labelProduct.Name,unit=labelProduct.Unit,location=labelProduct.Location,svg=BarcodeService.Svg(labelProduct.Code) }); break;
+                case "packageBarcode":
+                    Guid packageProductId=payload.GetProperty("productId").GetGuid();int packageIndex=payload.GetProperty("packageIndex").GetInt32();
+                    Commit(s=>{
+                        var p=s.Products.Single(x=>x.Id==packageProductId);
+                        if(packageIndex<0||packageIndex>=p.Packages.Count)throw new ArgumentException("Embalagem não encontrada.");
+                        if(string.IsNullOrWhiteSpace(p.Packages[packageIndex].Code))p.Packages[packageIndex].Code=BarcodeService.Generate(s);
+                        InventoryRules.Validate(p,s);
+                    });
+                    var packageProduct=state.Products.Single(x=>x.Id==packageProductId);var labelPackage=packageProduct.Packages[packageIndex];
+                    Reply(id,new { inventory=state,code=labelPackage.Code,name=packageProduct.Name,unit=labelPackage.Name+" com "+labelPackage.Factor.ToString("0.##")+" "+packageProduct.Unit,location=packageProduct.Location,svg=BarcodeService.Svg(labelPackage.Code) });break;
                 case "saveProduct":
                     var product = payload.Deserialize<Product>(json) ?? throw new ArgumentException("Produto inválido.");
                     Commit(s =>

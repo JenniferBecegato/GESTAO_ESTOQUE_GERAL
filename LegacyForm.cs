@@ -166,7 +166,7 @@ public partial class LegacyForm : Form
         var g = Grid(360); List<Product> visible = [];
         void Refresh()
         {
-            visible = state.Products.Where(p => (inactive.Checked || p.Active) && (cat.SelectedIndex == 0 || p.Category == cat.Text) && (p.Name + " " + p.Code + " " + string.Join(" ",p.Packages.Select(x => x.Code))).Contains(search.Text.Trim(),StringComparison.OrdinalIgnoreCase)).OrderBy(p => p.Name).ToList();
+            visible = state.Products.Where(p => (inactive.Checked || p.Active) && (cat.SelectedIndex == 0 || p.Category == cat.Text) && (p.Name + " " + p.Code + " " + string.Join(" ",p.CodeAliases) + " " + string.Join(" ",p.Packages.Select(x => x.Code))).Contains(search.Text.Trim(),StringComparison.OrdinalIgnoreCase)).OrderBy(p => p.Name).ToList();
             g.DataSource = ProductTable(visible);
         }
         Product? Selected() => g.CurrentRow != null && g.CurrentRow.Index < visible.Count ? visible[g.CurrentRow.Index] : null;
@@ -256,7 +256,7 @@ public partial class LegacyForm : Form
         void Find()
         {
             var code = search.Text.Trim(); if(code.Length == 0) return;
-            var p = state.Products.FirstOrDefault(p => p.Active && (p.Code.Equals(code,StringComparison.OrdinalIgnoreCase) || p.Packages.Any(x => x.Code.Length > 0 && x.Code.Equals(code,StringComparison.OrdinalIgnoreCase))));
+            var p = state.Products.FirstOrDefault(p => p.Active && (p.Code.Equals(code,StringComparison.OrdinalIgnoreCase) || p.CodeAliases.Contains(code,StringComparer.OrdinalIgnoreCase) || p.Packages.Any(x => x.Code.Length > 0 && x.Code.Equals(code,StringComparison.OrdinalIgnoreCase))));
             if(p == null)
             {
                 if(MessageBox.Show(this,"Código não encontrado. Deseja cadastrar o produto?","Localizar produto",MessageBoxButtons.YesNo,MessageBoxIcon.Question) == DialogResult.Yes)
@@ -502,6 +502,7 @@ public partial class LegacyForm : Form
         Add(body,text);
     }
 }
+
 
 
 

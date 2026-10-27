@@ -10,6 +10,7 @@
     const referenceMoney = dinheiro;
     let lastSavedProduct=null,scanTimer;
     let financeMonth=new Date().getMonth()+1,financeYear=new Date().getFullYear();
+    const purchaseHistoryFilters={start:'',end:'',product:'',store:''};
     const $ = id => document.getElementById(id);
     const localDate = d => new Date(d).toLocaleDateString('sv-SE');
     function request(type,payload) {
@@ -31,7 +32,7 @@
         inventory = data;
         produtos = data.Products.filter(p => p.Active).map(p => ({
             id:p.Id,code:p.Code,nome:p.Name,cat:p.Category,un:p.Unit,saldo:p.Balance,min:p.Minimum,local:p.Location,
-            emb:p.Packages[0]?.Name||'',factor:p.Packages[0]?.Factor||1,packages:p.Packages,reference:p.Reference
+            emb:p.Packages[0]?.Name||'',factor:p.Packages[0]?.Factor||1,packages:p.Packages,aliases:p.CodeAliases||[],reference:p.Reference
         }));
         hist = [...data.Movements].sort((a,b) => b.Date.localeCompare(a.Date)).map(m => ({tipo:m.Type,nome:m.ProductName,q:m.Converted,un:m.Unit,pessoa:m.Person,setor:m.Sector,data:new Date(m.Date).toLocaleString('pt-BR'),id:m.Id}));
         compras = data.Movements.filter(m => m.Type === 'Entrada').map(m => ({
@@ -62,6 +63,9 @@
         }
         .products-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:20px}
         .products-heading button.action{margin:0;flex-shrink:0}
+        .financial-info-card{position:relative;padding-right:42px}
+        .financial-info-card>.info-wrap{position:absolute;top:18px;right:16px;margin-left:0}
+        .financial-info-card>.info-wrap .info-text{left:auto;right:0;transform:none}
         .low-stock-scroll{max-height:256px;overflow-y:auto;overscroll-behavior:contain}
         .low-stock-scroll th{height:40px;position:sticky;top:0;background:white;z-index:1}
         .low-stock-scroll td{height:54px}
@@ -86,6 +90,11 @@
         .label-action{border:1px solid #dce2ec;border-radius:6px;background:#eef1f8;color:#20366c;padding:7px 10px;cursor:pointer;white-space:nowrap}
         #label-dialog{width:min(860px,95vw);max-height:92vh;overflow:auto;border:1px solid #dce2ec;border-radius:12px;padding:22px;color:#23314b}
         #label-dialog::backdrop{background:#172a5066}
+        #link-code-dialog{width:min(760px,95vw);max-height:90vh;overflow:auto;border:1px solid #dce2ec;border-radius:12px;padding:24px;color:#23314b}
+        #link-code-dialog::backdrop{background:#172a5066}
+        #link-code-dialog h2{margin-top:0}
+        #link-product{height:230px;padding:0}
+        #link-product option{padding:10px 12px;border-bottom:1px solid #edf0f5;white-space:normal}
         #label-dialog h2{margin:0 0 10px}
         #label-dialog .label-options{display:flex;gap:14px;align-items:end;margin-bottom:18px}
         #label-dialog .label-options>div{flex:1}
@@ -96,7 +105,9 @@
         .barcode-label code{font:11pt Consolas,monospace;color:black}
         .barcode-label small{font:8pt 'Segoe UI',sans-serif;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
         .pdf-filter-summary,#all-reports-pdf{display:none}
+        .purchase-history-print-summary{display:none}
         @media print{
+            .purchase-history-print-summary{display:block!important;white-space:pre-line;background:#f3f5fa;padding:8px 10px;border-radius:6px;line-height:1.5}
             html,body{height:auto!important;max-height:none!important;overflow:visible!important}
             body:not(.printing-labels) main,body:not(.printing-labels) #page{height:auto!important;max-height:none!important;overflow:visible!important;display:block!important;min-width:0!important}
             body:not(.printing-labels) .panel{overflow:visible!important}
@@ -190,13 +201,21 @@
         const print=document.createElement('button');print.type='button';print.id='print-saved-label';print.className='action secondary';print.textContent='Imprimir etiqueta';print.hidden=true;print.onclick=()=>openLabel(lastSavedProduct);button.after(print);
         input.addEventListener('input',()=>{lastSavedProduct=null;print.hidden=true;});
     }
-    async function openLabel(id,quantity=null,entryInfo=''){
+    async function openLabel(id,quantity=null,entryInfo='',entryContext=null){
         if(!id){alert('Salve o produto antes de imprimir a etiqueta.');return;}
         try{
-            const data=await request('barcode',id);quantity??=[...inventory.Movements].reverse().find(m=>m.ProductId===id&&m.Type==='Entrada')?.Converted||1;document.querySelector('#label-dialog')?.remove();
+            let data=await request('barcode',id);const unitData=data,product=inventory.Products.find(p=>p.Id===id);
+            const latest=entryContext||[...inventory.Movements].reverse().find(m=>m.ProductId===id&&m.Type==='Entrada');
+            const receivedUnits=latest?(latest.Converted??latest.Quantity*latest.Factor):quantity??1;
+            const initialPackage=latest?.Factor>1?product.Packages.findIndex(p=>p.Factor===latest.Factor):-1;
+            quantity??=receivedUnits;document.querySelector('#label-dialog')?.remove();
             const dialog=document.createElement('dialog');dialog.id='label-dialog';
             dialog.innerHTML=`<h2>Etiquetas do produto</h2><p class="muted" id="label-entry-info"></p><div class="label-options"><div><label for="label-count">Quantidade de etiquetas</label><input id="label-count" type="number" min="1" max="10000" step="1"></div><div><label>Papel</label><input value="A4 — várias etiquetas por folha" readonly></div></div><div class="label-options"><div><label for="label-size">Formato</label><select id="label-size"><option value="30,20">Compacto: 30 × 20 mm</option><option value="40,20">40 × 20 mm</option><option value="60,40">60 × 40 mm</option><option value="80,50">80 × 50 mm</option><option value="100,50">100 × 50 mm</option><option value="custom">Personalizado</option></select></div><div><label for="label-width">Largura (mm)</label><input id="label-width" type="number" min="25" max="200" step="0.1" value="30"></div><div><label for="label-height">Altura (mm)</label><input id="label-height" type="number" min="15" max="280" step="0.1" value="20"></div></div><div class="label-options"><div><label for="label-gap">Espaço entre etiquetas (mm)</label><input id="label-gap" type="number" min="0" max="15" step="0.1" value="1"></div><div><label for="label-margin">Margem da folha A4 (mm)</label><input id="label-margin" type="number" min="0" max="30" step="0.1" value="5"></div></div><p class="small muted">As etiquetas são distribuídas em linhas e colunas na folha A4. O formato compacto de 30 × 20 mm permite até 78 etiquetas por folha. Imprima uma única cópia: a quantidade já está distribuída no documento.</p><p id="label-layout-summary" class="status"></p><div id="label-print-area"></div><button type="button" class="action" id="label-print">Gerar PDF</button><button type="button" class="action secondary" id="label-close">Fechar</button>`;
             document.body.append(dialog);$('label-entry-info').textContent=entryInfo||'Confira a quantidade, o papel e as medidas antes de imprimir.';$('label-count').value=quantity;
+            const targetBox=document.createElement('div');targetBox.innerHTML='<label for="label-target">Onde a etiqueta será colocada?</label><select id="label-target"></select><p id="label-target-note" class="source-note"></p>';
+            $('label-entry-info').after(targetBox);
+            $('label-target').add(new Option('Em cada produto avulso — 1 '+product.Unit,'unit'));
+            product.Packages.forEach((p,i)=>$('label-target').add(new Option('Em cada '+p.Name+' — '+p.Factor+' '+product.Unit,String(i))));
             let saved={};try{saved=await request('getLabelProfile')||{};}catch{}
             if(saved.layoutVersion!==3)saved={width:30,height:20,gap:1,margin:5};
             for(const key of ['width','height','gap','margin'])if(saved[key]!==undefined)$('label-'+key).value=saved[key];
@@ -221,7 +240,9 @@
                         const name=document.createElement('strong');name.textContent=data.name;name.style.cssText=`font-size:${h<25?7:10}pt;max-height:${h<25?4:9}mm;line-height:1.1`;
                         const image=document.createElement('img');image.src='data:image/svg+xml;base64,'+btoa(data.svg);image.alt='Código '+data.code;image.style.width=(w-(h<25?2:4))+'mm';image.style.height=Math.max(7,Math.min(15,h-11))+'mm';
                         const code=document.createElement('code');code.textContent=data.code;code.style.fontSize=h<25?'7pt':'10pt';
-                        label.append(name,image,code);if(h>=30){const place=document.createElement('small');place.textContent=data.location||data.unit;label.append(place);}sheet.append(label);
+                        label.append(name);
+                        if(data.packageLabel){const packText=document.createElement('small');packText.textContent=data.packageLabel;packText.style.cssText='font-size:7pt;line-height:1.05;font-weight:600';label.append(packText);image.style.height=Math.max(7,Math.min(15,h-14))+'mm';}
+                        label.append(image,code);if(h>=30){const place=document.createElement('small');place.textContent=data.location||data.unit;label.append(place);}sheet.append(label);
                     }
                     area.append(sheet);
                 }
@@ -239,14 +260,61 @@
                 try{await request('print',layout);}catch(e){alert(e.message);}finally{document.body.classList.remove('printing-labels');}
             }
             $('label-print').onclick=()=>print();
-            draw();dialog.showModal();
+            async function selectTarget(){
+                $('label-print').disabled=true;$('label-target').disabled=true;
+                try{
+                    const target=$('label-target').value;
+                    if(target==='unit'){
+                        data=unitData;$('label-count').value=receivedUnits;
+                        $('label-target-note').textContent=`${receivedUnits} etiquetas iguais para os produtos avulsos. Cada leitura movimenta 1 ${product.Unit}.`;
+                    }else{
+                        const index=Number(target),pack=product.Packages[index];
+                        const result=await request('packageBarcode',{productId:id,packageIndex:index});sync(result.inventory);
+                        data={...result,packageLabel:pack.Name+' c/ '+pack.Factor};
+                        const count=latest&&latest.Factor===pack.Factor?latest.Quantity:Math.floor(receivedUnits/pack.Factor);
+                        $('label-count').value=Math.max(1,count);
+                        $('label-target-note').textContent=`${Math.max(1,count)} etiquetas iguais para ${pack.Name}. Cada leitura movimenta ${pack.Factor} ${product.Unit}. O código da embalagem é diferente do código avulso e será reutilizado nas próximas compras.`;
+                    }
+                    draw();
+                }catch(e){alert(e.message);layout=null;}
+                finally{$('label-target').disabled=false;$('label-print').disabled=!layout;}
+            }
+            $('label-target').onchange=selectTarget;$('label-target').value=initialPackage>=0?String(initialPackage):'unit';
+            dialog.showModal();await selectTarget();
         }catch(e){alert(e.message);}
     }
+    function openLinkCode(code){
+        document.querySelector('#link-code-dialog')?.remove();
+        const dialog=document.createElement('dialog');dialog.id='link-code-dialog';
+        dialog.innerHTML='<h2>Vincular código a um produto existente</h2><p>Novo código: <strong id="link-new-code"></strong></p><label for="link-product-search">Buscar por nome, categoria ou código</label><input id="link-product-search" placeholder="Ex.: Café"><label for="link-product">Selecione um produto cadastrado</label><select id="link-product" size="6" aria-label="Produtos cadastrados"></select><p id="link-product-details" class="source-note">Escolha o produto ao qual esse código pertence.</p><p class="small muted">Confira se é a mesma apresentação e unidade. Este vínculo identifica uma unidade de controle; se o código for de caixa ou fardo, cadastre a embalagem com o fator correto. O código antigo continuará válido.</p><p id="link-error" role="alert" style="color:#a33232"></p><button type="button" class="action" id="link-save" disabled>Salvar vínculo</button><button type="button" class="action secondary" id="link-cancel">Cancelar</button>';
+        document.body.append(dialog);$('link-new-code').textContent=code;
+        function options(){
+            const query=$('link-product-search').value.trim().toLocaleLowerCase('pt-BR');
+            const matches=inventory.Products.filter(p=>(p.Name+' '+p.Code+' '+(p.CodeAliases||[]).join(' ')+' '+p.Category).toLocaleLowerCase('pt-BR').includes(query)).sort((a,b)=>a.Name.localeCompare(b.Name,'pt-BR'));
+            $('link-product').replaceChildren();
+            for(const p of matches){const option=new Option(`${p.Name} • ${p.Category} • ${p.Unit} • Saldo: ${p.Balance} • Código: ${p.Code}${p.Active?'':' • INATIVO'}`,p.Id);option.disabled=!p.Active;$('link-product').add(option);}
+            $('link-product').selectedIndex=-1;$('link-save').disabled=true;$('link-product-details').textContent=matches.length?'Escolha o produto ao qual esse código pertence.':'Nenhum produto encontrado para esta busca.';
+        }
+        $('link-product-search').oninput=options;
+        $('link-product').onchange=()=>{const p=inventory.Products.find(p=>p.Id===$('link-product').value);$('link-save').disabled=!p?.Active;$('link-product-details').textContent=p?`Produto: ${p.Name} • Cada leitura deste novo código representa 1 ${p.Unit}. Saldo atual: ${p.Balance} ${p.Unit}. Códigos vinculados: ${[p.Code,...(p.CodeAliases||[])].join(', ')}`:'Selecione um produto.';};
+        $('link-cancel').onclick=()=>dialog.close();
+        $('link-save').onclick=async()=>{
+            const productId=$('link-product').value;if(!productId)return;
+            $('link-save').disabled=true;$('link-cancel').disabled=true;$('link-error').textContent='';
+            try{
+                sync(await request('linkCode',{productId,code}));dialog.close();
+                if(current===3||current===4){$('codigo').value=code;buscar();$('msg').textContent='Código vinculado ao produto. Confira os dados e confirme a movimentação quando estiver pronto.';$('q').focus();$('q').select();}
+            }catch(error){$('link-error').textContent=error.message;}
+            finally{if(!dialog.isConnected)return;$('link-save').disabled=false;$('link-cancel').disabled=false;}
+        };
+        options();dialog.showModal();$('link-product-search').focus();
+    }
+    atualizaLista=function(){const query=$('busca').value.toLocaleLowerCase('pt-BR');$('lista').innerHTML=table(produtos.filter(p=>(p.nome+' '+p.code+' '+p.aliases.join(' ')).toLocaleLowerCase('pt-BR').includes(query)));};
     function setupScanner(){
         clearTimeout(scanTimer);const input=$('codigo');input.autocomplete='off';input.spellcheck=false;input.placeholder='Digite ou bipe o código de barras';
         const reset=()=>{selected=null;$('formmov').classList.add('hide');$('produto').replaceChildren();};
         input.onkeydown=e=>{if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();clearTimeout(scanTimer);buscar();if(selected){$('q').focus();$('q').select();}}};
-        input.addEventListener('input',()=>{reset();clearTimeout(scanTimer);const code=input.value.trim();scanTimer=setTimeout(()=>{if(current!==3&&current!==4)return;if(produtos.some(p=>p.code===code||p.packages.some(pk=>pk.Code&&pk.Code===code)))buscar();},350);});
+        input.addEventListener('input',()=>{reset();clearTimeout(scanTimer);const code=input.value.trim();scanTimer=setTimeout(()=>{if(current!==3&&current!==4)return;if(produtos.some(p=>p.code===code||p.aliases.includes(code)||p.packages.some(pk=>pk.Code&&pk.Code===code)))buscar();},350);});
         input.addEventListener('focus',()=>input.select());requestAnimationFrame(()=>input.focus());
     }
     function addContextMenu() {
@@ -329,16 +397,25 @@
             const financial=[...document.querySelectorAll('#page .panel')].find(x=>x.querySelector('h2')?.textContent==='Resumo financeiro ilustrativo');
             if(financial) {
                 financial.querySelector('h2').textContent='Resumo financeiro';
+                const explanations=[
+                    ['Gasto nas compras','Soma dos valores pagos nas compras do mês e ano selecionados, pela data da compra. Considera os descontos e acréscimos registrados em cada item. Compras sem custo informado não entram na soma e são indicadas na observação abaixo.'],
+                    ['Economia comparada à referência','Compara o valor de referência com o valor pago, para a mesma quantidade e unidade: referência total menos valor pago. Só entram compras com referência e custo informados. Resultado positivo indica economia; negativo indica custo adicional. A referência por unidade deve corresponder à unidade de controle do produto.'],
+                    ['Local com maior gasto','Estabelecimento em que foi gasto o maior valor em compras no mês e ano selecionados. Considera apenas compras com custo informado. É o local da compra, não o local onde o produto é armazenado.']
+                ];
+                financial.querySelectorAll('.card').forEach((card,i)=>{
+                    card.classList.add('financial-info-card');adicionaAjuda(card,explanations[i][1]);
+                    card.querySelector('.info-btn').setAttribute('aria-label','Informação: '+explanations[i][0]);
+                });
                 const months=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-                const filters=document.createElement('div');filters.className='two finance-filters';filters.style.cssText='max-width:520px;margin-bottom:18px;gap:12px';
-                const years=compras.map(c=>Number(c.data.slice(0,4))).filter(Number.isFinite);years.push(new Date().getFullYear(),financeYear);
-                filters.innerHTML='<div><label for="finance-month">Mês da compra</label><select id="finance-month"></select></div><div><label for="finance-year">Ano da compra</label><select id="finance-year"></select></div>';
+                const filters=document.createElement('div');filters.className='finance-filters';filters.style.cssText='max-width:310px;margin-bottom:18px';
+                filters.innerHTML='<label for="finance-period">Mês e ano da compra</label><input type="month" id="finance-period" min="1900-01" max="2070-12" required aria-label="Selecionar mês e ano da compra">';
                 financial.querySelector('h2').after(filters);
-                months.forEach((m,i)=>$('finance-month').add(new Option(m,String(i+1))));
-                for(let y=Math.max(...years)+1;y>=Math.min(...years)-1;y--)$('finance-year').add(new Option(String(y),String(y)));
-                $('finance-month').value=financeMonth;$('finance-year').value=financeYear;
+                $('finance-period').value=financeYear+'-'+String(financeMonth).padStart(2,'0');
+                $('finance-period').addEventListener('click',()=>{try{$('finance-period').showPicker();}catch{}});
                 function updateFinance(){
-                    financeMonth=Number($('finance-month').value);financeYear=Number($('finance-year').value);
+                    const period=$('finance-period');
+                    if(!period.value||!period.validity.valid)return;
+                    const [year,month]=period.value.split('-').map(Number);financeMonth=month;financeYear=year;
                     const key=financeYear+'-'+String(financeMonth).padStart(2,'0'),items=compras.filter(c=>c.data.startsWith(key));
                     const refs=items.filter(c=>c.ref!==null&&c.valor!==null),totals={};
                     items.forEach(c=>{if(c.valor!==null)totals[c.local]=(totals[c.local]||0)+c.valor;});
@@ -348,7 +425,7 @@
                     cards[2].textContent=top?.[0]||'Sem dados';cards[2].title=top?referenceMoney(top[1]):'Nenhuma compra com valor informado neste período';
                     financial.querySelector('p.muted').textContent=`Período: ${months[financeMonth-1]} de ${financeYear} (data da compra). ${items.length} item(ns) de compra; ${items.filter(c=>c.unknown).length} sem custo conhecido. Economia calculada em ${refs.length} de ${items.length} itens com referência. Valores negativos indicam custo adicional.`;
                 }
-                $('finance-month').onchange=updateFinance;$('finance-year').onchange=updateFinance;updateFinance();
+                $('finance-period').onchange=updateFinance;updateFinance();
             }
         }
         if(current===2) {
@@ -380,6 +457,35 @@
             panel.querySelector('table').outerHTML='<table><tr><th>Data</th><th>Tipo</th><th>Produto</th><th>Quantidade</th><th>Responsável / setor</th></tr>'+data.map(m=>`<tr><td>${esc(new Date(m.Date).toLocaleString('pt-BR'))}</td><td>${esc(m.Type)}</td><td>${esc(m.ProductName)}</td><td>${m.Converted} ${esc(m.Unit)}</td><td>${esc(m.Person)} / ${esc(m.Sector)}</td></tr>`).join('')+'</table>';
         }
         filters.querySelectorAll('input,select').forEach(c=>c.addEventListener('input',filter));
+        enhancePurchaseHistory();
+    }
+    function enhancePurchaseHistory(){
+        const panel=[...page.querySelectorAll('.panel')].find(p=>p.querySelector('h2')?.textContent==='Histórico de compras por local');if(!panel)return;
+        const controls=document.createElement('div');controls.className='history-filter-controls';controls.style.marginBottom='16px';
+        controls.innerHTML='<div class="filtergrid"><div><label for="purchases-start">Data inicial da compra</label><input type="date" id="purchases-start"></div><div><label for="purchases-end">Data final da compra</label><input type="date" id="purchases-end"></div><div><label for="purchases-store">Local da compra</label><select id="purchases-store"><option value="">Todos os locais</option></select></div><div><label for="purchases-product">Produto ou código</label><input id="purchases-product" placeholder="Digite para pesquisar"></div></div><button type="button" class="action secondary" id="purchases-clear">Limpar filtros</button>';
+        panel.querySelector('h2').after(controls);
+        [...new Set(compras.map(c=>c.local))].sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(store=>$('purchases-store').add(new Option(store,store)));
+        for(const [key,id]of Object.entries({start:'purchases-start',end:'purchases-end',product:'purchases-product',store:'purchases-store'}))$(id).value=purchaseHistoryFilters[key];
+        const note=document.createElement('p');note.className='muted small';note.setAttribute('aria-live','polite');controls.after(note);
+        const printSummary=document.createElement('p');printSummary.className='purchase-history-print-summary';note.after(printSummary);
+        function apply(){
+            Object.assign(purchaseHistoryFilters,{start:$('purchases-start').value,end:$('purchases-end').value,product:$('purchases-product').value.trim(),store:$('purchases-store').value});
+            const f=purchaseHistoryFilters,query=f.product.toLocaleLowerCase('pt-BR'),invalid=f.start&&f.end&&f.start>f.end;
+            const rows=inventory.Movements.filter(m=>{
+                if(m.Type!=='Entrada'||invalid)return false;
+                const p=inventory.Products.find(p=>p.Id===m.ProductId),search=m.ProductName+' '+(p?.Code||'')+' '+(p?.CodeAliases||[]).join(' ')+' '+(p?.Packages||[]).map(pk=>pk.Code).join(' ');
+                return (!f.start||m.PurchaseDate.slice(0,10)>=f.start)&&(!f.end||m.PurchaseDate.slice(0,10)<=f.end)&&(!f.store||(m.Store||'Não informado')===f.store)&&search.toLocaleLowerCase('pt-BR').includes(query);
+            }).sort((a,b)=>b.PurchaseDate.localeCompare(a.PurchaseDate)||b.Date.localeCompare(a.Date));
+            const table=document.createElement('table');table.id='purchases-history-table';
+            table.innerHTML='<thead><tr><th>Data</th><th>Produto</th><th>Local da compra</th><th>Quantidade</th><th>Valor</th><th>Economia</th></tr></thead><tbody>'+rows.map(m=>`<tr><td>${esc(m.PurchaseDate.slice(0,10).split('-').reverse().join('/'))}</td><td>${esc(m.ProductName)}</td><td>${esc(m.Store||'Não informado')}</td><td>${m.Converted} ${esc(m.Unit)}</td><td>${m.Total===null?'Custo desconhecido':referenceMoney(m.Total)}</td><td>${m.Total===null||m.ReferenceTotal===null?'Não calculada':referenceMoney(m.ReferenceTotal-m.Total)}</td></tr>`).join('')+(rows.length?'':'<tr><td colspan="6">Nenhuma compra encontrada para os filtros selecionados.</td></tr>')+'</tbody>';
+            panel.querySelector('table').replaceWith(table);
+            note.textContent=invalid?'A data inicial deve ser anterior ou igual à data final.':`${rows.length} item(ns) de compra • Total conhecido: ${referenceMoney(rows.reduce((sum,m)=>sum+(m.Total??0),0))}. Filtro pela data da compra.`;
+            note.style.color=invalid?'#a33232':'';
+            const date=s=>s?s.split('-').reverse().join('/'):'Sem limite';
+            printSummary.textContent=`Filtros das compras: ${date(f.start)} a ${date(f.end)} • Local: ${f.store||'Todos os locais'} • Produto/código: ${f.product||'Todos os produtos'}`;
+        }
+        controls.querySelectorAll('input,select').forEach(c=>c.addEventListener('input',apply));
+        $('purchases-clear').onclick=()=>{controls.querySelectorAll('input,select').forEach(c=>c.value='');apply();};apply();
     }
     cadastrar=function(){save(async()=>{
         const code=$('code').value.trim(),name=$('nome').value.trim(),unit=$('un').value.trim();
@@ -390,10 +496,14 @@
         sync(await request('saveProduct',p));lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('print-saved-label').hidden=false;$('msg').textContent='Produto cadastrado. Você já pode imprimir a etiqueta. Registre o saldo inicial em Entrada.';
     });};
     buscar=function(){
-        const code=$('codigo').value.trim(); const p=produtos.find(x=>x.code===code||x.packages.some(pk=>pk.Code&&pk.Code===code));
+        const code=$('codigo').value.trim(); const p=produtos.find(x=>x.code===code||x.aliases.includes(code)||x.packages.some(pk=>pk.Code&&pk.Code===code));
         if(p)$('codigo').value=p.code;
         referenceSearch(); $('codigo').value=code;
-        if(!selected){const button=$('produto').querySelector('button');if(button)button.onclick=()=>{show(2);$('code').value=code;};return;}
+        if(!selected){
+            if(!code){$('produto').textContent='Digite ou bipe o código do produto.';return;}
+            $('produto').innerHTML='<p>Código <strong>'+esc(code)+'</strong> não encontrado.</p><button type="button" class="action" id="link-existing-product">Vincular a um produto existente</button><button type="button" class="action secondary" id="register-new-product">Cadastrar novo produto</button>';
+            $('link-existing-product').onclick=()=>openLinkCode(code);$('register-new-product').onclick=()=>{show(2);$('code').value=code;};return;
+        }
         const base=inventory.Products.find(x=>x.Id===selected.id);
         $('tipoemb').innerHTML=`<option value="1">${esc(selected.un)} (unidade de controle)</option>`+base.Packages.map(pk=>`<option value="${pk.Factor}">${esc(pk.Name)} — ${pk.Factor} ${esc(selected.un)}</option>`).join('');
         const pack=base.Packages.findIndex(pk=>pk.Code&&pk.Code===code); if(pack>=0)$('tipoemb').selectedIndex=pack+1;
@@ -418,8 +528,8 @@
         $('msg').textContent=`Movimentação registrada. Novo saldo: ${updated.saldo} ${updated.un}.`;
         $('formmov').classList.add('hide');$('produto').innerHTML='';selected=null;
         if(m.Type==='Entrada'){
-            document.querySelector('#entry-label-action')?.remove();const button=document.createElement('button');button.id='entry-label-action';button.type='button';button.className='action secondary';button.textContent=`Imprimir ${labelsQuantity} etiquetas desta entrada`;
-            button.onclick=()=>openLabel(id,labelsQuantity,`Entrada registrada: ${quantity} × ${m.Package}. Total: ${labelsQuantity} ${updated.un} = ${labelsQuantity} etiquetas.`);$('msg').after(button);
+            document.querySelector('#entry-label-action')?.remove();const button=document.createElement('button');button.id='entry-label-action';button.type='button';button.className='action secondary';button.textContent=`Gerar etiquetas desta entrada`;
+            button.onclick=()=>openLabel(id,null,`Entrada registrada: ${quantity} × ${m.Package}. Total no estoque: ${labelsQuantity} ${updated.un}. Escolha etiquetar as embalagens ou os produtos avulsos.`,{Quantity:quantity,Factor:factor,Converted:labelsQuantity});$('msg').after(button);
         }
         $('codigo').value='';requestAnimationFrame(()=>$('codigo')?.focus());
     });};
@@ -456,6 +566,7 @@
         addContextMenu();show(0);document.documentElement.style.visibility='visible';request('ready');
     }).catch(e=>{document.documentElement.style.visibility='visible';page.innerHTML='<h1>Não foi possível carregar o estoque</h1><p>'+esc(e.message)+'</p>';});
 })();
+
 
 
 

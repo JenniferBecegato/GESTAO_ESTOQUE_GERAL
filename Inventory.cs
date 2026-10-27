@@ -13,6 +13,7 @@ public sealed class Product
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Code { get; set; } = "";
+    public List<string> CodeAliases { get; set; } = [];
     public string Name { get; set; } = "";
     public string Category { get; set; } = "Outros";
     public string Unit { get; set; } = "unidade";
@@ -114,16 +115,26 @@ public static class InventoryRules
         if (string.IsNullOrWhiteSpace(p.Code) || string.IsNullOrWhiteSpace(p.Name) || string.IsNullOrWhiteSpace(p.Unit)) throw new ArgumentException("Informe código, nome e unidade de controle.");
         if (p.Minimum < 0 || p.Target < p.Minimum) throw new ArgumentException("O estoque desejado deve ser igual ou maior que o mínimo.");
         var codes = new List<string> { p.Code };
+        if(p.CodeAliases.Any(c=>string.IsNullOrWhiteSpace(c)||c.Length>128||c.Any(char.IsControl)))throw new ArgumentException("Código alternativo inválido.");
+        codes.AddRange(p.CodeAliases);
         foreach (var pack in p.Packages)
         {
             if (string.IsNullOrWhiteSpace(pack.Name) || pack.Factor <= 0 || pack.Factor != decimal.Truncate(pack.Factor)) throw new ArgumentException("Informe nome e fator inteiro positivo para cada embalagem.");
             if (!string.IsNullOrWhiteSpace(pack.Code)) codes.Add(pack.Code);
         }
         if (codes.Distinct(StringComparer.OrdinalIgnoreCase).Count() != codes.Count) throw new ArgumentException("Os códigos das unidades e embalagens devem ser diferentes.");
-        var other = state.Products.Where(x => x.Id != p.Id).SelectMany(x => new[] { x.Code }.Concat(x.Packages.Select(y => y.Code))).Where(x => x.Length > 0);
+        var other = state.Products.Where(x => x.Id != p.Id).SelectMany(x => new[] { x.Code }.Concat(x.CodeAliases).Concat(x.Packages.Select(y => y.Code))).Where(x => x.Length > 0);
         if (other.Any(x => codes.Contains(x, StringComparer.OrdinalIgnoreCase))) throw new ArgumentException("Um dos códigos já pertence a outro produto ou embalagem.");
         var old = state.Products.FirstOrDefault(x => x.Id == p.Id);
         if (old != null && old.Unit != p.Unit && state.Movements.Any(x => x.ProductId == p.Id)) throw new ArgumentException("A unidade de um produto movimentado não pode ser alterada.");
+    }
+    public static void LinkCode(Inventory state,Guid productId,string code)
+    {
+        code=code.Trim();
+        var p=state.Products.SingleOrDefault(x=>x.Id==productId)??throw new ArgumentException("Produto não encontrado.");
+        if(!p.Active)throw new ArgumentException("O produto selecionado está inativo.");
+        if(p.Code.Equals(code,StringComparison.OrdinalIgnoreCase)||p.CodeAliases.Contains(code,StringComparer.OrdinalIgnoreCase))return;
+        p.CodeAliases.Add(code);Validate(p,state);
     }
     public static void Apply(Inventory state, Movement m)
     {

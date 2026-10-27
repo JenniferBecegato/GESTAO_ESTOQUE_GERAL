@@ -58,3 +58,18 @@ Todos os botões de PDF apresentam a escolha A4 em Retrato (vertical) ou Paisage
 
 ## Exportação direta, sem pergunta de orientação
 Exportar PDF abre diretamente a janela para escolher a pasta e o nome do arquivo. Os PDFs são gerados em A4 retrato, com conteúdo ajustado à página e paginação automática. A janela de orientação foi removida. Na impressão pelo Adobe Acrobat ou outro leitor, selecione papel A4 e Ajustar/Ajustar à área imprimível; orientação pode ser escolhida na própria impressão. PDFs têm diagramação fixa: escala personalizada de 100% pode cortar conteúdo se o papel ou a orientação da impressora forem diferentes. Na captura enviada, o papel de impressão estava em Carta (215,9 × 279,4 mm), diferente de A4 (210 × 297 mm).
+
+## Vários códigos para o mesmo produto
+Quando o código digitado ou lido não existir, Entrada e Saída oferecem Vincular a um produto existente e Cadastrar novo produto. O vínculo abre a lista de produtos cadastrados com busca por nome, categoria e códigos. Produtos inativos aparecem identificados e não podem ser escolhidos. Selecione o produto, confira a unidade e clique Salvar vínculo.
+
+O novo código e o antigo passam a identificar o mesmo cadastro. O saldo e o histórico não são alterados pelo vínculo; a entrada/saída ainda exige confirmação. A associação é preservada no SQLite e continua funcionando depois de fechar e abrir o sistema. Um código não pode pertencer a dois produtos nem colidir com um código de embalagem. Códigos alternativos também funcionam na busca da lista de produtos e nas ferramentas de gestão.
+
+O vínculo simples identifica uma unidade de controle. Para códigos que identificam caixas/fardos, cadastre uma embalagem com seu fator de conversão. Apresentações diferentes (por exemplo, café 500 g e 1 kg) devem ser diferenciadas. Lote não é usado para adivinhar o produto: a associação de um código novo depende da escolha da pessoa.
+
+## Etiquetas por embalagem ou por produto avulso
+Na prévia, escolha Onde a etiqueta será colocada. Ao abrir a partir de uma entrada em embalagem, o sistema sugere etiquetas para a quantidade de embalagens recebidas: 5 pacotes com 3 unidades geram 5 etiquetas iguais de pacote, enquanto o saldo recebe 15 unidades. Cada embalagem usa um código próprio, persistido no cadastro, com seu fator de conversão. Bipa-se 1 pacote para movimentar 3 unidades. Não são gerados números sequenciais por pacote: pacotes equivalentes reutilizam o mesmo código.
+
+A opção Em cada produto avulso usa o código da unidade e gera 15 etiquetas nesse exemplo. Cada leitura avulsa representa uma unidade. O código do pacote é diferente do código avulso, para evitar confundir fatores. A etiqueta da embalagem identifica o nome e o conteúdo (ex.: Pacote c/ 3). Gerar ou reimprimir códigos não altera o saldo nem registra movimentações. Para usar esse controle, cadastre unidade de controle = unidade e embalagem = pacote com fator 3; se a unidade de controle já for pacote, esse pacote já é a unidade individual do estoque.
+
+## Filtros do histórico de compras por local
+O quadro Histórico de compras por local possui filtros próprios de data inicial/final da compra, local e produto/código. A busca inclui os códigos alternativos e de embalagem. Limpar filtros restaura a lista completa. O total conhecido e o número de itens acompanham a seleção; entradas sem custo permanecem identificadas. O PDF preserva as linhas filtradas e mostra os critérios aplicados nesse quadro. Os filtros das movimentações permanecem independentes.
