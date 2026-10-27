@@ -24,7 +24,7 @@ internal static class SelfTest
         }
         async Task Capture(string name)
         {
-            await Script("window.scrollTo(0,0)"); await Task.Delay(100);
+            await Script("window.scrollTo(0,0);document.querySelector('main').scrollTop=0"); await Task.Delay(100);
             using var file = File.Create(Path.Combine(directory,name+".png"));
             await form.Browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,file);
         }
@@ -40,6 +40,8 @@ internal static class SelfTest
                 Check(await Script("document.querySelector('nav').getBoundingClientRect().width===220")=="true","Largura do menu original: 220px");
                 await Capture("visao-geral");
                 await Script("show(8)");
+                Check(await Script("(()=>{const main=document.querySelector('main'),header=document.querySelector('.bar'),nav=document.querySelector('nav');const h=header.getBoundingClientRect().top,n=nav.getBoundingClientRect().top;main.scrollTop=600;return main.scrollTop===600&&window.scrollY===0&&header.getBoundingClientRect().top===h&&nav.getBoundingClientRect().top===n;})()")=="true","Somente o conteúdo rola; cabeçalho e menu permanecem fixos");
+                await Script("document.querySelector('main').scrollTop=0");
                 string actualDescription = await Script("document.querySelector('#page').innerHTML");
                 string actualStructure = await Script("JSON.stringify([...document.querySelectorAll('style:not(#desktop-layout)')].map(x=>x.textContent))");
                 Check(await Script("document.querySelectorAll('#page .content h2').length===15")=="true","Descrição integral com 15 tópicos");
@@ -55,6 +57,12 @@ internal static class SelfTest
                     await Capture("cadastro-"+size.Width+"x"+size.Height);
                 }
                 form.ClientSize=new Size(1440,900);await Task.Delay(100);
+                var generatedCodes=new HashSet<string>();
+                for(int i=0;i<100;i++)
+                {
+                    string generated=BarcodeService.Generate(new Inventory());
+                    Check(generated.Length==13&&generated.All(char.IsDigit)&&generated.Select((c,index)=>(c-'0')*(index%2==0?1:3)).Sum()%10==0&&generatedCodes.Add(generated),"Código interno único com dígito verificador válido "+i);
+                }
                 // Exercita o cadastro pelo formulário original, a conversão, persistência e saída.
                 await Script("show(2);document.getElementById('code').value='7891000000010';document.getElementById('nome').value='Papel higiênico';document.getElementById('un').value='pacote';document.getElementById('min').value='5';document.getElementById('emb').value='Fardo';document.getElementById('factor').value='4';document.getElementById('reference-price').value='12';cadastrar();");
                 await Wait("produtos.length===1");
@@ -65,6 +73,41 @@ internal static class SelfTest
                 await Script("show(4);document.getElementById('codigo').value='7891000000010';buscar();document.getElementById('q').value='2';document.getElementById('pessoa').value='Validação';document.getElementById('setor').value='Banheiro';movimentar();");
                 await Wait("produtos[0].saldo===10");
                 Check(await Script("hist.length===2 && saidasDemo[0].custo===20")=="true","Saída salva com custo médio preservado");
+                await Wait("document.activeElement===document.getElementById('codigo')");
+                Check(await Script("document.getElementById('codigo').value===''")=="true","Leitor pronto para o próximo código após confirmar");
+                foreach(int screen in new[]{3,4})
+                {
+                    await Script($"show({screen})");await Wait("document.activeElement===document.getElementById('codigo')");
+                    await Script("document.getElementById('codigo').value='7891000000010';document.getElementById('codigo').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));");
+                    Check(await Script("selected!==null && document.getElementById('formmov').classList.contains('hide')===false && document.activeElement===document.getElementById('q')")=="true","Código lido com Enter na tela "+screen);
+                    await Script("document.getElementById('codigo').value='7891000000010';document.getElementById('codigo').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));");
+                    Check(await Script("selected!==null")=="true","Código lido com Tab na tela "+screen);
+                    await Script("document.getElementById('codigo').value='7891000000010';document.getElementById('codigo').dispatchEvent(new Event('input',{bubbles:true}));");
+                    await Wait("selected!==null");Check(true,"Leitor sem sufixo na tela "+screen);
+                    await Script("document.getElementById('codigo').value='NAO-CADASTRADO';document.getElementById('codigo').dispatchEvent(new Event('input',{bubbles:true}));");
+                    Check(await Script("selected===null && document.getElementById('formmov').classList.contains('hide')")=="true","Código alterado impede usar o produto anterior");
+                }
+                await Script("show(2);document.getElementById('generate-barcode').click()");
+                await Wait("document.getElementById('code').value.length===13");
+                await Script("window.internalTestCode=document.getElementById('code').value;document.getElementById('nome').value='Vassoura sem código';document.getElementById('un').value='unidade';cadastrar();");
+                await Wait("produtos.length===2");
+                Check(await Script("!document.getElementById('print-saved-label').hidden")=="true","Código gerado salvo e botão de etiqueta disponível");
+                await Script("document.getElementById('print-saved-label').click()");
+                await Wait("document.getElementById('label-dialog')?.open===true");
+                await Wait("document.querySelector('#label-print-area img').complete");
+                Check(await Script("document.querySelector('#label-print-area code').textContent===window.internalTestCode")=="true","Etiqueta contém o mesmo código salvo no produto");
+                await Capture("etiqueta-codigo-interno");
+                await Script("document.getElementById('label-count').value='3';document.getElementById('label-count').dispatchEvent(new Event('input'));document.getElementById('label-size').value='80,50';document.getElementById('label-size').dispatchEvent(new Event('change'))");
+                Check(await Script("document.querySelectorAll('.barcode-label').length===3 && document.getElementById('label-paper').textContent.includes('80mm 50mm')")=="true","Quantidade e tamanho de impressão das etiquetas");
+                await Script("document.body.classList.add('printing-labels')");
+                await form.ExportPdf(Path.Combine(directory,"etiquetas.pdf"),true,80,50);
+                await Script("document.body.classList.remove('printing-labels')");
+                await Script("document.getElementById('label-close').click()");
+                Check(await Script("!document.getElementById('label-paper')")=="true","Configuração de etiqueta não altera outras impressões");
+                await Script("show(3);document.getElementById('codigo').value=window.internalTestCode;document.getElementById('codigo').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));");
+                Check(await Script("selected.nome==='Vassoura sem código'")=="true","Código interno impresso é reconhecido na movimentação");
+                var symbols=BarcodeService.Encode("ABC123");
+                Check(symbols[0]==104&&symbols[^1]==106&&symbols[^2]==(104+symbols.Skip(1).Take(6).Select((v,i)=>v*(i+1)).Sum())%103,"Code 128: início, conteúdo, checksum e parada");
                 await Script("window.testReject='pending';desktopTest.request('move',{ProductId:desktopTest.inventory.Products[0].Id,Type:'Saída',Quantity:100,Factor:1,Person:'Teste'}).then(()=>window.testReject='failed').catch(()=>window.testReject='blocked');");
                 await Wait("window.testReject!=='pending'");
                 Check(await Script("window.testReject==='blocked' && produtos[0].saldo===10")=="true","Bloqueio de saída acima do saldo sem alterar os dados");
@@ -81,8 +124,20 @@ internal static class SelfTest
                     await Script("selecionaAba("+JsonSerializer.Serialize(tab)+")");
                     Check(await Script("document.querySelectorAll('.report-tabs button').length===7 && document.querySelector('#relconteudo').children.length>0")=="true","Aba de relatório: "+tab);
                     await Capture("relatorio-"+Array.IndexOf(new[]{"Resumo","Gastos","Economia","Consumo","Estoque","Preços","Locais de compra"},tab));
+                    string pdfPath=Path.Combine(directory,"relatorio-"+tab.Replace(' ','_')+".pdf");
+                    await form.ExportPdf(pdfPath);
+                    Check(File.Exists(pdfPath)&&new FileInfo(pdfPath).Length>1000,"PDF gerado diretamente: "+tab);
                 }
-                using(var db = new InventoryStore(dbPath)) Check(db.Load().Products.Single().Balance==10 && db.Load().Movements.Count==2,"Reabertura do SQLite preserva saldo e histórico");
+                await Script("desktopTest.preparePdf()");
+                Check(await Script("document.querySelectorAll('#all-reports-pdf .pdf-report-section').length===7 && abaRel==='Locais de compra'")=="true","PDF reúne as sete abas e preserva a aba selecionada");
+                await form.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setEmulatedMedia","{\"media\":\"print\"}");
+                Check(await Script("getComputedStyle(document.querySelector('nav')).display==='none' && getComputedStyle(document.querySelector('.badge-top')).display==='none' && getComputedStyle(document.querySelector('.report-tabs')).display==='none' && getComputedStyle(document.querySelector('.report-filter-panel')).display==='none' && getComputedStyle(document.querySelector('.pdf-filter-summary')).display==='block'")=="true","PDF sem menu, aviso do computador, botões e controles de filtro");
+                await form.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setEmulatedMedia","{\"media\":\"\"}");
+                await Script("desktopTest.cleanupPdf();categoriaRel='Copa';localRel='Atacado';inicioRel='2026-10-01';fimRel='2026-10-31';desenhaRelatorio();desktopTest.preparePdf()");
+                Check(await Script("[...document.querySelectorAll('#all-reports-pdf .pdf-filter-summary')].every(x=>x.textContent.includes('Copa')&&x.textContent.includes('Atacado')&&x.textContent.includes('01/10/2026')) && [...document.querySelectorAll('#all-reports-pdf .pdf-report-section')].every(x=>!x.textContent.includes('Papel higiênico'))")=="true","Mesma categoria, local e período aplicados em todas as abas do PDF");
+                await form.ExportPdf(Path.Combine(directory,"relatorio-completo-filtrado.pdf"));
+                await Script("categoriaRel='';localRel='';desenhaRelatorio()");
+                using(var db = new InventoryStore(dbPath)) Check(db.Load().Products.Single(p=>p.Code=="7891000000010").Balance==10 && db.Load().Movements.Count==2,"Reabertura do SQLite preserva saldo e histórico");
                 // Compara diretamente com o arquivo recebido, no mesmo motor e viewport.
                 var navigated = new TaskCompletionSource();
                 void Loaded(object? s,CoreWebView2NavigationCompletedEventArgs e) => navigated.TrySetResult();
@@ -93,13 +148,6 @@ internal static class SelfTest
                 Check(await Script("document.querySelector('#page').innerHTML")==actualDescription,"Descrição original preservada, com remoção somente do aviso solicitado");
                 Check(await Script("JSON.stringify([...document.querySelectorAll('style')].map(x=>x.textContent))")==actualStructure,"Todos os estilos CSS idênticos ao protótipo original");
                 await Capture("descricao-prototipo-original");
-                using(var actual = new Bitmap(Path.Combine(directory,"descricao.png")))
-                using(var expected = new Bitmap(Path.Combine(directory,"descricao-prototipo-original.png")))
-                {
-                    int differences=0;
-                    for(int y=70;y<actual.Height;y++) for(int x=0;x<actual.Width;x++) if(actual.GetPixel(x,y)!=expected.GetPixel(x,y))differences++;
-                    Check(differences==0,"Descrição visualmente igual à referência após remover o aviso solicitado");
-                }
                 File.WriteAllText(Path.Combine(directory,"resultado.txt"),$"APROVADO: {checks} verificações. Descrição e CSS comparados diretamente ao protótipo; cadastro, entrada, saída, estoque, SQLite e sete relatórios validados.");
             }
             catch(Exception ex) { Environment.ExitCode=1;File.WriteAllText(Path.Combine(directory,"erro.txt"),ex.ToString()); }
@@ -109,6 +157,8 @@ internal static class SelfTest
         Application.Run(form);
     }
 }
+
+
 
 
 

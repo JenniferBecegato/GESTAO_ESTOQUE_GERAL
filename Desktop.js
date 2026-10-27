@@ -8,6 +8,7 @@
     const referenceSearch = buscar;
     const referenceTable = table;
     const referenceMoney = dinheiro;
+    let lastSavedProduct=null,scanTimer;
     const $ = id => document.getElementById(id);
     const localDate = d => new Date(d).toLocaleDateString('sv-SE');
     function request(type,payload) {
@@ -50,25 +51,89 @@
     const layoutStyle=document.createElement('style');
     layoutStyle.id='desktop-layout';
     layoutStyle.textContent=`
+        @media screen{
+            html,body{height:100%;overflow:hidden}
+            body{display:flex;flex-direction:column}
+            body>.bar{flex:0 0 auto}
+            body>.layout{display:flex;flex:1;min-height:0;height:0}
+            .layout>nav{height:100%;flex:0 0 220px;overflow-y:auto;overscroll-behavior:contain}
+            .layout>main{height:100%;min-height:0;overflow:auto;overscroll-behavior:contain}
+        }
         .products-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:20px}
         .products-heading button.action{margin:0;flex-shrink:0}
-        body[data-screen="2"] .layout{min-height:calc(100vh - var(--app-header-height,68px))}
-        body[data-screen="2"] main{padding:20px 28px}
+        body[data-screen="2"] .layout{height:calc(100vh - var(--app-header-height,68px));min-height:0}
+        body[data-screen="2"] main{padding:20px 28px 12px;display:flex;flex-direction:column;min-height:0}
+        body[data-screen="2"] #page{flex:1;display:flex;flex-direction:column;min-height:0}
         body[data-screen="2"] #page>h1{font-size:25px;margin-bottom:6px}
         body[data-screen="2"] #page>.muted{font-size:14px;margin-bottom:12px}
-        body[data-screen="2"] .registration-panel{padding:16px;margin-bottom:0}
-        .registration-panel .form-column{display:grid;gap:10px;align-content:start}
+        body[data-screen="2"] .registration-panel{padding:20px;margin-bottom:0;flex:1;display:flex;flex-wrap:wrap;align-content:start;align-items:center;gap:0}
+        .registration-panel>.two{width:100%;gap:20px}
+        .registration-panel .form-column{display:grid;gap:clamp(10px,2.3vh,22px);align-content:start}
         .registration-panel .form-field{min-width:0}
-        .registration-panel label{margin:0 0 4px;font-size:13px}
-        .registration-panel input,.registration-panel select{padding:8px 10px;font-size:14px;height:36px}
-        .registration-panel .registration-help{font-size:12px;line-height:1.35;margin:10px 0 0}
+        .registration-panel label{margin:0 0 6px;font-size:14px}
+        .registration-panel input,.registration-panel select{padding:10px 12px;font-size:15px;height:clamp(38px,5.2vh,46px)}
+        .registration-panel .registration-help{width:100%;font-size:12px;line-height:1.35;margin:16px 0 0}
         .registration-panel button.action{margin-top:10px;padding:9px 16px}
         .registration-panel .status:empty{display:none}
-        .registration-panel .status{margin-top:6px;font-size:13px}
+        .registration-panel .status{width:100%;margin-top:6px;font-size:13px}
+        .code-entry{display:flex;gap:6px;align-items:stretch}
+        .code-entry input{min-width:0;flex:1}
+        .code-entry button{border:1px solid #dce2ec;border-radius:7px;color:#20366c;background:#eef1f8;padding:0 9px;cursor:pointer;white-space:nowrap;font-size:12px}
+        .label-action{border:1px solid #dce2ec;border-radius:6px;background:#eef1f8;color:#20366c;padding:7px 10px;cursor:pointer;white-space:nowrap}
+        #label-dialog{width:min(680px,95vw);border:1px solid #dce2ec;border-radius:12px;padding:22px;color:#23314b}
+        #label-dialog::backdrop{background:#172a5066}
+        #label-dialog h2{margin:0 0 10px}
+        #label-dialog .label-options{display:flex;gap:14px;align-items:end;margin-bottom:18px}
+        #label-dialog .label-options>div{flex:1}
+        #label-print-area{display:flex;flex-wrap:wrap;gap:10px;max-height:45vh;overflow:auto;padding:10px;background:#f3f5fa}
+        .barcode-label{box-sizing:border-box;width:60mm;height:40mm;flex:none;background:white;color:black;padding:3mm;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;gap:1mm}
+        .barcode-label strong{font:600 10pt 'Segoe UI',sans-serif;max-height:10mm;overflow:hidden;text-align:center}
+        .barcode-label img{width:54mm;height:15mm;object-fit:fill;display:block}
+        .barcode-label code{font:11pt Consolas,monospace;color:black}
+        .barcode-label small{font:8pt 'Segoe UI',sans-serif;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+        .pdf-filter-summary,#all-reports-pdf{display:none}
+        @media print{
+            body.printing-all-reports:not(.printing-labels)>.bar,body.printing-all-reports:not(.printing-labels)>.layout{display:none!important}
+            body.printing-all-reports #all-reports-pdf{display:block!important}
+            #all-reports-pdf .pdf-report-section{break-before:page}
+            #all-reports-pdf .pdf-report-section:first-child{break-before:auto}
+            #all-reports-pdf h1{font-size:22px;margin:16px 0 8px}
+            body:not(.printing-labels){background:white!important;font-size:11px!important;color:#23314b;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+            body:not(.printing-labels) nav,body:not(.printing-labels) .badge-top,body:not(.printing-labels) button,body:not(.printing-labels) .report-tabs,body:not(.printing-labels) .info-wrap,body:not(.printing-labels) #desktop-menu,body:not(.printing-labels) #label-dialog{display:none!important}
+            body:not(.printing-labels) #page>.notice,body:not(.printing-labels) .report-filter-panel{display:none!important}
+            body:not(.printing-labels) .layout{display:block!important;min-height:0!important}
+            body:not(.printing-labels) main{display:block!important;padding:15px 0 0!important;max-width:none!important;width:100%!important}
+            body:not(.printing-labels) .bar{padding:0 0 12px!important;box-shadow:none!important;background:white!important}
+            body:not(.printing-labels) #page h1{font-size:22px!important}
+            body:not(.printing-labels) #page h2{font-size:14px!important}
+            body:not(.printing-labels) .report-title{display:block!important}
+            body:not(.printing-labels) .pdf-filter-summary{display:block!important;background:#f3f5fa;padding:10px 12px;margin:14px 0;border:1px solid #e4e7ef;border-radius:6px;line-height:1.6;white-space:pre-line}
+            body:not(.printing-labels) .panel,body:not(.printing-labels) .card,body:not(.printing-labels) .metric{box-shadow:none!important;break-inside:avoid;padding:12px!important}
+            body:not(.printing-labels) .panel h2,body:not(.printing-labels) .section-note{break-after:avoid}
+            body:not(.printing-labels) .report-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:10px!important;margin:12px 0!important}
+            body:not(.printing-labels) .metric{min-height:85px!important}
+            body:not(.printing-labels) .metric strong{font-size:19px!important}
+            body:not(.printing-labels) .chartgrid{grid-template-columns:1fr 1fr!important;gap:12px!important}
+            body:not(.printing-labels) .chartbar{grid-template-columns:115px 1fr 85px!important;font-size:11px!important}
+            body:not(.printing-labels) .tablewrap{overflow:visible!important}
+            body:not(.printing-labels) table{table-layout:fixed;width:100%!important;font-size:10px!important}
+            body:not(.printing-labels) th,body:not(.printing-labels) td{padding:8px 5px!important;min-width:0!important;white-space:normal!important;overflow-wrap:anywhere}
+            body:not(.printing-labels) thead{display:table-header-group}
+            body:not(.printing-labels) tr{break-inside:avoid}
+            body.printing-labels>*{display:none!important}
+            body.printing-labels #label-dialog{display:block!important;position:static!important;width:auto!important;max-width:none!important;max-height:none!important;border:0!important;padding:0!important;margin:0!important;overflow:visible!important}
+            body.printing-labels #label-dialog>*:not(#label-print-area){display:none!important}
+            body.printing-labels #label-print-area{display:block!important;max-height:none!important;overflow:visible!important;background:white!important;padding:0!important}
+            body.printing-labels .barcode-label{break-after:page;break-inside:avoid;margin:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+            body.printing-labels .barcode-label:last-child{break-after:auto}
+        }
         @media(max-height:700px){
-            body[data-screen="2"] main{padding:14px 24px}
+            body[data-screen="2"] main{padding:14px 24px 12px}
+            body[data-screen="2"] .registration-panel{padding:16px}
             .registration-panel .form-column{gap:7px}
+            .registration-panel label{font-size:13px;margin-bottom:4px}
             .registration-panel input,.registration-panel select{height:32px;padding:6px 9px}
+            .registration-panel .registration-help{margin-top:10px}
         }
         @media(max-width:700px){
             .products-heading{align-items:flex-start}
@@ -99,6 +164,44 @@
         const button=panel.querySelector('button.action'),message=$('msg'),help=document.createElement('p');
         help.className='muted registration-help';help.textContent='Exemplo: 1 fardo = 4 pacotes. Cadastre com saldo zero e registre a quantidade em Entrada. A referência e sua origem serão salvas no cadastro.';
         panel.replaceChildren(columns,help,button,message);
+        const input=$('code'),group=document.createElement('div'),generate=document.createElement('button');
+        group.className='code-entry';input.before(group);generate.type='button';generate.id='generate-barcode';generate.textContent='Gerar código';generate.title='Produto sem código de barras: gerar código interno único';
+        generate.onclick=async()=>{generate.disabled=true;try{input.value=await request('generateCode');lastSavedProduct=null;input.dispatchEvent(new Event('change'));}catch(e){alert(e.message);}finally{generate.disabled=false;}};
+        group.append(input,generate);
+        const print=document.createElement('button');print.type='button';print.id='print-saved-label';print.className='action secondary';print.textContent='Imprimir etiqueta';print.hidden=true;print.onclick=()=>openLabel(lastSavedProduct);button.after(print);
+        input.addEventListener('input',()=>{lastSavedProduct=null;print.hidden=true;});
+    }
+    async function openLabel(id){
+        if(!id){alert('Salve o produto antes de imprimir a etiqueta.');return;}
+        try{
+            const data=await request('barcode',id);document.querySelector('#label-dialog')?.remove();
+            const dialog=document.createElement('dialog');dialog.id='label-dialog';
+            dialog.innerHTML='<h2>Etiqueta de código de barras</h2><p class="muted">Confira a prévia e selecione a quantidade de etiquetas.</p><div class="label-options"><div><label for="label-count">Quantidade</label><input id="label-count" type="number" min="1" max="100" value="1"></div><div><label for="label-size">Tamanho da etiqueta</label><select id="label-size"><option value="60,40">60 × 40 mm</option><option value="80,50">80 × 50 mm</option><option value="100,50">100 × 50 mm</option></select></div></div><div id="label-print-area"></div><p class="small muted">Imprima em escala 100%, sem cabeçalhos e rodapés. Escolha a impressora de etiquetas ou salve em PDF. O código identifica o produto neste estoque.</p><button type="button" class="action" id="label-print">Imprimir / Salvar PDF</button><button type="button" class="action secondary" id="label-close">Fechar</button>';
+            document.body.append(dialog);
+            function draw(){
+                const count=Math.min(100,Math.max(1,Number($('label-count').value)||1)),[w,h]=$('label-size').value.split(',').map(Number);const area=$('label-print-area');area.replaceChildren();
+                for(let i=0;i<count;i++){
+                    const label=document.createElement('div');label.className='barcode-label';label.style.width=w+'mm';label.style.height=h+'mm';
+                    const name=document.createElement('strong');name.textContent=data.name;
+                    const image=document.createElement('img');image.src='data:image/svg+xml;base64,'+btoa(data.svg);image.alt='Código de barras '+data.code;image.style.width=(w-6)+'mm';
+                    const code=document.createElement('code');code.textContent=data.code;const location=document.createElement('small');location.textContent=data.location||data.unit;
+                    label.append(name,image,code,location);area.append(label);
+                }
+                let paper=$('label-paper');if(!paper){paper=document.createElement('style');paper.id='label-paper';document.head.append(paper);}paper.textContent=`@media print{@page{size:${w}mm ${h}mm;margin:0}}`;
+            }
+            function cleanup(){document.body.classList.remove('printing-labels');$('label-paper')?.remove();}
+            $('label-count').oninput=draw;$('label-size').onchange=draw;
+            $('label-close').onclick=()=>{cleanup();dialog.close();};dialog.addEventListener('close',cleanup);dialog.addEventListener('cancel',cleanup);
+            $('label-print').onclick=async()=>{draw();await Promise.all([...dialog.querySelectorAll('img')].map(img=>img.decode()));document.body.classList.add('printing-labels');const [width,height]=$('label-size').value.split(',').map(Number);try{await request('print',{labels:true,width,height});}catch(e){alert(e.message);}finally{document.body.classList.remove('printing-labels');}};
+            draw();dialog.showModal();
+        }catch(e){alert(e.message);}
+    }
+    function setupScanner(){
+        clearTimeout(scanTimer);const input=$('codigo');input.autocomplete='off';input.spellcheck=false;input.placeholder='Digite ou bipe o código de barras';
+        const reset=()=>{selected=null;$('formmov').classList.add('hide');$('produto').replaceChildren();};
+        input.onkeydown=e=>{if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();clearTimeout(scanTimer);buscar();if(selected){$('q').focus();$('q').select();}}};
+        input.addEventListener('input',()=>{reset();clearTimeout(scanTimer);const code=input.value.trim();scanTimer=setTimeout(()=>{if(current!==3&&current!==4)return;if(produtos.some(p=>p.code===code||p.packages.some(pk=>pk.Code&&pk.Code===code)))buscar();},350);});
+        input.addEventListener('focus',()=>input.select());requestAnimationFrame(()=>input.focus());
     }
     function addContextMenu() {
         const menu = document.createElement('div');
@@ -119,13 +222,41 @@
         const rows=[...grid.rows].map(r=>[...r.cells].map(c=>c.innerText));
         try{await request('export',rows);}catch(e){alert(e.message);}
     }
+    function preparePdf(){
+        cleanupPdf();
+        document.querySelector('.pdf-filter-summary')?.remove();
+        if(current===6){
+            const date=s=>s?s.split('-').reverse().join('/'):'Sem limite';
+            const summaryFor=tab=>{const summary=document.createElement('div');summary.className='pdf-filter-summary';summary.textContent=`Relatório: ${tab}\nPeríodo: ${date(inicioRel)} a ${date(fimRel)}    •    Local: ${localRel||'Todos os locais'}    •    Categoria: ${categoriaRel||'Todas as categorias'}`;return summary;};
+            const previous=abaRel,main=document.querySelector('main'),scrollY=main.scrollTop,root=document.createElement('div');root.id='all-reports-pdf';
+            try{
+                for(const tab of ['Resumo','Gastos','Economia','Consumo','Estoque','Preços','Locais de compra']){
+                    abaRel=tab;desenhaRelatorio();
+                    const section=document.createElement('section');section.className='pdf-report-section';section.dataset.report=tab;
+                    const brand=document.querySelector('.bar').cloneNode(true);brand.querySelector('.badge-top')?.remove();
+                    const title=document.createElement('h1');title.textContent='Relatórios de estoque — '+tab;
+                    const content=$('relconteudo').cloneNode(true);content.removeAttribute('id');
+                    section.append(brand,title,summaryFor(tab),content);root.append(section);
+                }
+            }finally{abaRel=previous;desenhaRelatorio();main.scrollTop=scrollY;}
+            const panel=document.querySelector('#page .panel');panel.classList.add('report-filter-panel');
+            const summary=summaryFor(previous);
+            panel.after(summary);
+            document.body.append(root);document.body.classList.add('printing-all-reports');
+        }
+    }
+    function cleanupPdf(){document.body.classList.remove('printing-all-reports');$('all-reports-pdf')?.remove();}
     window.print=()=>request('print').catch(e=>alert(e.message));
     table=function(ps) {
         if(!ps.length) return '<table><tr><th>Produto</th><th>Categoria</th><th>Saldo</th><th>Mínimo</th><th>Situação</th></tr><tr><td colspan="5">Nenhum produto encontrado.</td></tr></table>';
-        return referenceTable(ps);
+        const container=document.createElement('div');container.innerHTML=referenceTable(ps);
+        const rows=[...container.querySelectorAll('tr')];rows[0].insertAdjacentHTML('beforeend','<th>Etiqueta</th>');
+        rows.slice(1).forEach((row,i)=>{const cell=document.createElement('td');cell.innerHTML=`<button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button>`;row.append(cell);});
+        return container.innerHTML;
     };
     render=function() {
         referenceRender();
+        document.querySelector('main').scrollTop=0;
         document.body.dataset.screen=String(current);
         if(current===8) document.querySelector('#page .content > .notice')?.remove();
         if(current===1){
@@ -154,7 +285,8 @@
             arrangeRegistration();
         }
         if(current===3||current===4) {
-            dataNotice(document.querySelector('#page > .notice'),'Digite ou leia um código e pressione Enter ou clique em Buscar. O produto deve estar cadastrado.');
+            dataNotice(document.querySelector('#page > .notice'),'Digite o código e pressione Enter ou bipe com o leitor em modo teclado. Aceita Enter, Tab ou leitura completa sem sufixo. F8 retorna ao campo do código.');
+            setupScanner();
             if(current===3) {
                 $('datacompra').value=localDate(new Date()); $('datarecebimento').value=localDate(new Date());
                 const invoice=[...document.querySelectorAll('#page input')].find(x=>x.placeholder==='Número da nota'); if(invoice) invoice.id='invoice';
@@ -181,13 +313,13 @@
         if(!code||!name||!unit||!Number.isInteger(minimum)||minimum<0||(emb&&(!Number.isInteger(factor)||factor<1)))throw new Error('Preencha código, nome, unidade e quantidades válidas.');
         const reference=$('reference-price')?.value||'';
         const p={Code:code,Name:name,Unit:unit,Category:$('cat').value,Minimum:minimum,Target:minimum,Location:$('local').value.trim(),Active:true,Reference:reference===''?null:Number(reference),ReferenceSource:$('reference-origin')?.value.trim()||'',ReferenceDate:new Date().toISOString(),Packages:emb?[{Name:emb,Factor:factor,Code:''}]:[]};
-        sync(await request('saveProduct',p)); $('msg').textContent='Produto cadastrado. Registre o saldo inicial em Entrada.';
+        sync(await request('saveProduct',p));lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('print-saved-label').hidden=false;$('msg').textContent='Produto cadastrado. Você já pode imprimir a etiqueta. Registre o saldo inicial em Entrada.';
     });};
     buscar=function(){
         const code=$('codigo').value.trim(); const p=produtos.find(x=>x.code===code||x.packages.some(pk=>pk.Code&&pk.Code===code));
         if(p)$('codigo').value=p.code;
         referenceSearch(); $('codigo').value=code;
-        if(!selected)return;
+        if(!selected){const button=$('produto').querySelector('button');if(button)button.onclick=()=>{show(2);$('code').value=code;};return;}
         const base=inventory.Products.find(x=>x.Id===selected.id);
         $('tipoemb').innerHTML=`<option value="1">${esc(selected.un)} (unidade de controle)</option>`+base.Packages.map(pk=>`<option value="${pk.Factor}">${esc(pk.Name)} — ${pk.Factor} ${esc(selected.un)}</option>`).join('');
         const pack=base.Packages.findIndex(pk=>pk.Code&&pk.Code===code); if(pack>=0)$('tipoemb').selectedIndex=pack+1;
@@ -211,6 +343,7 @@
         const id=selected.id;sync(await request('move',m));const updated=produtos.find(p=>p.id===id);
         $('msg').textContent=`Movimentação registrada. Novo saldo: ${updated.saldo} ${updated.un}.`;
         $('formmov').classList.add('hide');$('produto').innerHTML='';selected=null;
+        $('codigo').value='';requestAnimationFrame(()=>$('codigo')?.focus());
     });};
     desenhaRelatorio=function(){
         referenceReports();
@@ -234,7 +367,9 @@
             if(abaRel==='Preços'&&cells.length===6){const m=visiblePurchases.find(m=>m.data===cells[0].textContent&&m.nome===cells[1].textContent&&m.local===cells[2].textContent);if(m?.unknown){cells[4].textContent='Desconhecido';cells[5].textContent='Desconhecido';}}
         }
     };
-    window.desktopTest = {request, get inventory(){return inventory;},sync,exportTable};
+    document.addEventListener('click',e=>{const button=e.target.closest('[data-label-product]');if(button)openLabel(button.dataset.labelProduct);});
+    document.addEventListener('keydown',e=>{if(e.key==='F8'&&(current===3||current===4)){e.preventDefault();$('codigo').focus();$('codigo').select();}});
+    window.desktopTest = {request, get inventory(){return inventory;},sync,exportTable,openLabel,preparePdf,cleanupPdf};
     document.documentElement.style.visibility='hidden';
     request('load').then(data=>{
         sync(data);const now=new Date();inicioRel=localDate(new Date(now.getFullYear(),now.getMonth(),1));fimRel=localDate(new Date(now.getFullYear(),now.getMonth()+1,0));
@@ -243,3 +378,4 @@
         addContextMenu();show(0);document.documentElement.style.visibility='visible';request('ready');
     }).catch(e=>{document.documentElement.style.visibility='visible';page.innerHTML='<h1>Não foi possível carregar o estoque</h1><p>'+esc(e.message)+'</p>';});
 })();
+

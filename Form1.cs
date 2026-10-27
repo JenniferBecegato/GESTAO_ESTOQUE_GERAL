@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -14,6 +15,7 @@ public partial class Form1 : Form
     internal TaskCompletionSource Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly JsonSerializerOptions json = new() { PropertyNameCaseInsensitive = true };
     private bool busy;
+    private bool exportingPdf;
     public Form1(string? databasePath = null)
     {
         InitializeComponent();
@@ -78,6 +80,10 @@ public partial class Form1 : Form
             {
                 case "load": Reply(id,state); break;
                 case "ready": Ready.TrySetResult(); Reply(id,true); break;
+                case "generateCode": Reply(id,BarcodeService.Generate(state)); break;
+                case "barcode":
+                    var labelProduct=state.Products.SingleOrDefault(p=>p.Id==payload.GetGuid()) ?? throw new ArgumentException("Salve o produto antes de imprimir a etiqueta.");
+                    Reply(id,new { id=labelProduct.Id,code=labelProduct.Code,name=labelProduct.Name,unit=labelProduct.Unit,location=labelProduct.Location,svg=BarcodeService.Svg(labelProduct.Code) }); break;
                 case "saveProduct":
                     var product = payload.Deserialize<Product>(json) ?? throw new ArgumentException("Produto inválido.");
                     Commit(s =>
@@ -103,7 +109,23 @@ public partial class Form1 : Form
                     }
                     Commit(s => InventoryRules.Apply(s,movement)); Reply(id,state); break;
                 case "advanced": Reply(id,true); Advanced(payload.ValueKind == JsonValueKind.String ? payload.GetString() : null); break;
-                case "print": Browser.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser); Reply(id,true); break;
+                case "print":
+                    if(exportingPdf) throw new InvalidOperationException("Aguarde a geração do PDF atual.");
+                    exportingPdf=true;
+                    try
+                    {
+                        bool labels=payload.ValueKind==JsonValueKind.Object&&payload.TryGetProperty("labels",out var labelFlag)&&labelFlag.GetBoolean();
+                        using var save=new SaveFileDialog { Filter="Documento PDF (*.pdf)|*.pdf",DefaultExt="pdf",AddExtension=true,FileName=(labels?"Etiquetas_":"Relatorio_Estoque_")+DateTime.Now.ToString("yyyyMMdd_HHmm")+".pdf" };
+                        if(save.ShowDialog(this)==DialogResult.OK)
+                        {
+                            await ExportPdf(save.FileName,labels,labels?payload.GetProperty("width").GetDouble():0,labels?payload.GetProperty("height").GetDouble():0);
+                            try { Process.Start(new ProcessStartInfo(save.FileName){UseShellExecute=true}); }
+                            catch { MessageBox.Show(this,"PDF salvo em:\n"+save.FileName,"PDF gerado"); }
+                        }
+                        Reply(id,true);
+                    }
+                    finally { exportingPdf=false; }
+                    break;
                 case "export": Export(payload); Reply(id,true); break;
                 default: throw new ArgumentException("Operação não reconhecida.");
             }
@@ -125,6 +147,23 @@ public partial class Form1 : Form
             Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { inventory = state }));
         }
         finally { busy = false; }
+    }
+    internal async Task ExportPdf(string path,bool labels=false,double width=0,double height=0)
+    {
+        if(!labels)await Browser.CoreWebView2.ExecuteScriptAsync("desktopTest.preparePdf()");
+        var settings=Browser.CoreWebView2.Environment.CreatePrintSettings();
+        settings.ShouldPrintHeaderAndFooter=false;
+        settings.ShouldPrintBackgrounds=true;
+        settings.ScaleFactor=1;
+        settings.PageWidth=labels?width/25.4:210/25.4;
+        settings.PageHeight=labels?height/25.4:297/25.4;
+        settings.Orientation=labels?CoreWebView2PrintOrientation.Portrait:CoreWebView2PrintOrientation.Landscape;
+        settings.MarginTop=settings.MarginBottom=settings.MarginLeft=settings.MarginRight=labels?0:10/25.4;
+        try
+        {
+            if(!await Browser.CoreWebView2.PrintToPdfAsync(path,settings))throw new IOException("Não foi possível gerar o PDF. Escolha outro local e tente novamente.");
+        }
+        finally { if(!labels)await Browser.CoreWebView2.ExecuteScriptAsync("desktopTest.cleanupPdf()"); }
     }
     private void Export(JsonElement payload)
     {

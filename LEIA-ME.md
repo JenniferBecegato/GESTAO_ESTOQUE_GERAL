@@ -25,3 +25,18 @@ O custo médio segue a ordem de registro. Datas retroativas não reprocessam cus
 
 ## Verificação
 Execute com `--self-test` para validar em um banco temporário: cadastro, conversão, entradas, saídas, saldo, persistência, telas e relatórios. O teste compara a descrição e todos os estilos diretamente com o HTML original e gera capturas em `validacao-layout`, ao lado do executável. O banco real não é alterado.
+
+## Leitor de código de barras e etiquetas
+- Na tela Entrada ou Saída, o campo Código recebe foco automaticamente. Digite e pressione Enter ou use leitor USB/Bluetooth configurado como teclado (HID). São aceitos Enter, Tab e leitura completa sem sufixo. F8 volta ao campo do código.
+- A leitura apenas identifica o produto e a embalagem; confira quantidade, responsável e demais dados antes de confirmar. Ler um código nunca lança uma movimentação sozinho.
+- Depois de confirmar, o campo é limpo e volta a receber foco para a próxima leitura. Alterar o código invalida o produto anterior, evitando lançar no item errado.
+- Para itens sem código, clique em Gerar código no cadastro, preencha os demais campos e salve. O sistema cria um código numérico interno único, com dígito verificador.
+- Use Imprimir etiqueta após salvar ou na coluna Etiqueta da lista de produtos. Há prévia, quantidade de 1 a 100 e tamanhos de 60×40, 80×50 e 100×50 mm.
+- A etiqueta usa Code 128, inclui nome e código legível e pode ser impressa ou salva em PDF. Selecione papel do mesmo tamanho, escala 100% e desative cabeçalhos/rodapés na impressão. O código impresso é o mesmo aceito na entrada e saída.
+- A integração foi validada por eventos de teclado simulados e pela prévia. A leitura física e o alinhamento devem ser conferidos com o leitor e a impressora usados no local.
+
+## PDF para impressão
+A opção Imprimir / Salvar em PDF gera um arquivo PDF diretamente. Escolha onde salvar; o documento é aberto no visualizador de PDF para conferir e imprimir. Os relatórios usam A4 na horizontal, sem menu lateral, botões, aviso do computador, data/URL/título do navegador ou controles de seleção. Os filtros aplicados aparecem como texto e os gráficos e tabelas são preservados. As etiquetas geram PDF no tamanho selecionado, uma etiqueta por página, também sem cabeçalhos/rodapés do navegador.
+
+## Relatório completo em PDF
+A exportação na tela Relatórios inclui as sete abas (Resumo, Gastos, Economia, Consumo, Estoque, Preços e Locais de compra) no mesmo arquivo, com uma seção por aba. Período, categoria e local selecionados são preservados durante toda a geração. A aba que estiver aberta na tela não limita o conteúdo exportado. Os filtros mantêm o significado da tela: período filtra compras e saídas; categoria filtra também o saldo atual; local filtra compras. A posição do estoque é atual. Se uma seção não tiver registros nos filtros aplicados, essa condição é informada. Ao terminar, a tela retorna à aba que estava selecionada.
