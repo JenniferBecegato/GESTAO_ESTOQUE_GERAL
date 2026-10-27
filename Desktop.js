@@ -9,6 +9,7 @@
     const referenceTable = table;
     const referenceMoney = dinheiro;
     let lastSavedProduct=null,scanTimer;
+    let financeMonth=new Date().getMonth()+1,financeYear=new Date().getFullYear();
     const $ = id => document.getElementById(id);
     const localDate = d => new Date(d).toLocaleDateString('sv-SE');
     function request(type,payload) {
@@ -61,6 +62,9 @@
         }
         .products-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:20px}
         .products-heading button.action{margin:0;flex-shrink:0}
+        .low-stock-scroll{max-height:256px;overflow-y:auto;overscroll-behavior:contain}
+        .low-stock-scroll th{height:40px;position:sticky;top:0;background:white;z-index:1}
+        .low-stock-scroll td{height:54px}
         body[data-screen="2"] .layout{height:calc(100vh - var(--app-header-height,68px));min-height:0}
         body[data-screen="2"] main{padding:20px 28px 12px;display:flex;flex-direction:column;min-height:0}
         body[data-screen="2"] #page{flex:1;display:flex;flex-direction:column;min-height:0}
@@ -80,7 +84,7 @@
         .code-entry input{min-width:0;flex:1}
         .code-entry button{border:1px solid #dce2ec;border-radius:7px;color:#20366c;background:#eef1f8;padding:0 9px;cursor:pointer;white-space:nowrap;font-size:12px}
         .label-action{border:1px solid #dce2ec;border-radius:6px;background:#eef1f8;color:#20366c;padding:7px 10px;cursor:pointer;white-space:nowrap}
-        #label-dialog{width:min(680px,95vw);border:1px solid #dce2ec;border-radius:12px;padding:22px;color:#23314b}
+        #label-dialog{width:min(860px,95vw);max-height:92vh;overflow:auto;border:1px solid #dce2ec;border-radius:12px;padding:22px;color:#23314b}
         #label-dialog::backdrop{background:#172a5066}
         #label-dialog h2{margin:0 0 10px}
         #label-dialog .label-options{display:flex;gap:14px;align-items:end;margin-bottom:18px}
@@ -93,6 +97,21 @@
         .barcode-label small{font:8pt 'Segoe UI',sans-serif;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
         .pdf-filter-summary,#all-reports-pdf{display:none}
         @media print{
+            html,body{height:auto!important;max-height:none!important;overflow:visible!important}
+            body:not(.printing-labels) main,body:not(.printing-labels) #page{height:auto!important;max-height:none!important;overflow:visible!important;display:block!important;min-width:0!important}
+            body:not(.printing-labels) .panel{overflow:visible!important}
+            body:not(.printing-labels) h1,body:not(.printing-labels) h2,body:not(.printing-labels) h3{break-after:avoid;overflow-wrap:anywhere}
+            body:not(.printing-labels) .content p,body:not(.printing-labels) .content li{orphans:3;widows:3;overflow-wrap:anywhere}
+            body:not(.printing-labels) .history-filter-controls{display:none!important}
+            body.pdf-portrait:not(.printing-labels) .chartgrid{grid-template-columns:1fr!important}
+            body.pdf-portrait:not(.printing-labels) .report-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+            .low-stock-scroll{max-height:none!important;overflow:visible!important}
+            .low-stock-scroll th{position:static!important}
+            .low-stock-scroll th,.low-stock-scroll td{height:auto!important}
+            body[data-screen="0"] .card{margin-bottom:0!important}
+            body[data-screen="0"] .card b{font-size:19px!important}
+            .low-stock-scroll th:nth-child(6),.low-stock-scroll td:nth-child(6),.finance-filters,.dashboard-quick-actions{display:none!important}
+            body[data-screen="0"] #page>.grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
             body.printing-all-reports:not(.printing-labels)>.bar,body.printing-all-reports:not(.printing-labels)>.layout{display:none!important}
             body.printing-all-reports #all-reports-pdf{display:block!important}
             #all-reports-pdf .pdf-report-section{break-before:page}
@@ -171,28 +190,55 @@
         const print=document.createElement('button');print.type='button';print.id='print-saved-label';print.className='action secondary';print.textContent='Imprimir etiqueta';print.hidden=true;print.onclick=()=>openLabel(lastSavedProduct);button.after(print);
         input.addEventListener('input',()=>{lastSavedProduct=null;print.hidden=true;});
     }
-    async function openLabel(id){
+    async function openLabel(id,quantity=null,entryInfo=''){
         if(!id){alert('Salve o produto antes de imprimir a etiqueta.');return;}
         try{
-            const data=await request('barcode',id);document.querySelector('#label-dialog')?.remove();
+            const data=await request('barcode',id);quantity??=[...inventory.Movements].reverse().find(m=>m.ProductId===id&&m.Type==='Entrada')?.Converted||1;document.querySelector('#label-dialog')?.remove();
             const dialog=document.createElement('dialog');dialog.id='label-dialog';
-            dialog.innerHTML='<h2>Etiqueta de código de barras</h2><p class="muted">Confira a prévia e selecione a quantidade de etiquetas.</p><div class="label-options"><div><label for="label-count">Quantidade</label><input id="label-count" type="number" min="1" max="100" value="1"></div><div><label for="label-size">Tamanho da etiqueta</label><select id="label-size"><option value="60,40">60 × 40 mm</option><option value="80,50">80 × 50 mm</option><option value="100,50">100 × 50 mm</option></select></div></div><div id="label-print-area"></div><p class="small muted">Imprima em escala 100%, sem cabeçalhos e rodapés. Escolha a impressora de etiquetas ou salve em PDF. O código identifica o produto neste estoque.</p><button type="button" class="action" id="label-print">Imprimir / Salvar PDF</button><button type="button" class="action secondary" id="label-close">Fechar</button>';
-            document.body.append(dialog);
+            dialog.innerHTML=`<h2>Etiquetas do produto</h2><p class="muted" id="label-entry-info"></p><div class="label-options"><div><label for="label-count">Quantidade de etiquetas</label><input id="label-count" type="number" min="1" max="10000" step="1"></div><div><label>Papel</label><input value="A4 — várias etiquetas por folha" readonly></div></div><div class="label-options"><div><label for="label-size">Formato</label><select id="label-size"><option value="30,20">Compacto: 30 × 20 mm</option><option value="40,20">40 × 20 mm</option><option value="60,40">60 × 40 mm</option><option value="80,50">80 × 50 mm</option><option value="100,50">100 × 50 mm</option><option value="custom">Personalizado</option></select></div><div><label for="label-width">Largura (mm)</label><input id="label-width" type="number" min="25" max="200" step="0.1" value="30"></div><div><label for="label-height">Altura (mm)</label><input id="label-height" type="number" min="15" max="280" step="0.1" value="20"></div></div><div class="label-options"><div><label for="label-gap">Espaço entre etiquetas (mm)</label><input id="label-gap" type="number" min="0" max="15" step="0.1" value="1"></div><div><label for="label-margin">Margem da folha A4 (mm)</label><input id="label-margin" type="number" min="0" max="30" step="0.1" value="5"></div></div><p class="small muted">As etiquetas são distribuídas em linhas e colunas na folha A4. O formato compacto de 30 × 20 mm permite até 78 etiquetas por folha. Imprima uma única cópia: a quantidade já está distribuída no documento.</p><p id="label-layout-summary" class="status"></p><div id="label-print-area"></div><button type="button" class="action" id="label-print">Gerar PDF</button><button type="button" class="action secondary" id="label-close">Fechar</button>`;
+            document.body.append(dialog);$('label-entry-info').textContent=entryInfo||'Confira a quantidade, o papel e as medidas antes de imprimir.';$('label-count').value=quantity;
+            let saved={};try{saved=await request('getLabelProfile')||{};}catch{}
+            if(saved.layoutVersion!==3)saved={width:30,height:20,gap:1,margin:5};
+            for(const key of ['width','height','gap','margin'])if(saved[key]!==undefined)$('label-'+key).value=saved[key];
+            $('label-size').value=[...$('label-size').options].some(o=>o.value===$('label-width').value+','+$('label-height').value)?$('label-width').value+','+$('label-height').value:'custom';
+            let layout,labelLandscape=false;
+            window.desktopOrientLabels=landscape=>{labelLandscape=landscape;draw();return layout;};
             function draw(){
-                const count=Math.min(100,Math.max(1,Number($('label-count').value)||1)),[w,h]=$('label-size').value.split(',').map(Number);const area=$('label-print-area');area.replaceChildren();
-                for(let i=0;i<count;i++){
-                    const label=document.createElement('div');label.className='barcode-label';label.style.width=w+'mm';label.style.height=h+'mm';
-                    const name=document.createElement('strong');name.textContent=data.name;
-                    const image=document.createElement('img');image.src='data:image/svg+xml;base64,'+btoa(data.svg);image.alt='Código de barras '+data.code;image.style.width=(w-6)+'mm';
-                    const code=document.createElement('code');code.textContent=data.code;const location=document.createElement('small');location.textContent=data.location||data.unit;
-                    label.append(name,image,code,location);area.append(label);
+                const count=Number($('label-count').value),w=Number($('label-width').value),h=Number($('label-height').value),gap=Number($('label-gap').value),margin=Number($('label-margin').value),media='a4';
+                layout=null;const area=$('label-print-area');area.replaceChildren();
+                if(!Number.isInteger(count)||count<1||count>10000||w<25||w>200||h<15||h>280||gap<0||gap>15||margin<0||margin>30){$('label-layout-summary').textContent='Informe quantidade inteira entre 1 e 10.000 e medidas válidas.';return;}
+                const pageWidth=labelLandscape?297:210,pageHeight=labelLandscape?210:297;
+                const cols=Math.floor((pageWidth-2*margin+gap)/(w+gap));
+                const rows=Math.floor((pageHeight-2*margin+gap)/(h+gap));
+                if(cols<1||rows<1){$('label-layout-summary').textContent='A etiqueta não cabe no papel com as margens informadas.';return;}
+                const capacity=cols*rows,pages=Math.ceil(count/capacity);
+                layout={labels:true,width:pageWidth,height:pageHeight,count,media,columns:cols,rows,pages};
+                $('label-layout-summary').textContent=`${count} etiqueta(s) • ${cols} coluna(s) × ${rows} linha(s) • ${pages} folha(s) A4 • Até ${capacity} etiquetas por folha`;
+                for(let page=0;page<pages;page++){
+                    const sheet=document.createElement('div');sheet.className='label-sheet';sheet.style.cssText=`width:${pageWidth}mm;height:${pageHeight}mm;padding:${media==='a4'?margin:0}mm;display:grid;grid-template-columns:repeat(${cols},${w}mm);grid-auto-rows:${h}mm;gap:${gap}mm;align-content:start;justify-content:start;box-sizing:border-box;background:white;flex:none`;
+                    for(let i=page*capacity;i<Math.min(count,(page+1)*capacity);i++){
+                        const label=document.createElement('div');label.className='barcode-label';label.style.cssText=`width:${w}mm;height:${h}mm;padding:${h<25?1:2}mm;gap:0.4mm;break-after:auto`;
+                        const name=document.createElement('strong');name.textContent=data.name;name.style.cssText=`font-size:${h<25?7:10}pt;max-height:${h<25?4:9}mm;line-height:1.1`;
+                        const image=document.createElement('img');image.src='data:image/svg+xml;base64,'+btoa(data.svg);image.alt='Código '+data.code;image.style.width=(w-(h<25?2:4))+'mm';image.style.height=Math.max(7,Math.min(15,h-11))+'mm';
+                        const code=document.createElement('code');code.textContent=data.code;code.style.fontSize=h<25?'7pt':'10pt';
+                        label.append(name,image,code);if(h>=30){const place=document.createElement('small');place.textContent=data.location||data.unit;label.append(place);}sheet.append(label);
+                    }
+                    area.append(sheet);
                 }
-                let paper=$('label-paper');if(!paper){paper=document.createElement('style');paper.id='label-paper';document.head.append(paper);}paper.textContent=`@media print{@page{size:${w}mm ${h}mm;margin:0}}`;
+                let paper=$('label-paper');if(!paper){paper=document.createElement('style');paper.id='label-paper';document.head.append(paper);}
+                paper.textContent=`@media print{@page{size:${pageWidth}mm ${pageHeight}mm;margin:0}body.printing-labels .label-sheet{break-after:page;break-inside:avoid;margin:0!important}body.printing-labels .label-sheet:last-child{break-after:auto}body.printing-labels .barcode-label{break-after:auto!important}}`;
+                clearTimeout(window.labelProfileTimer);window.labelProfileTimer=setTimeout(()=>request('saveLabelProfile',{layoutVersion:3,media:'a4',width:w,height:h,gap,margin}).catch(()=>{}),300);
             }
             function cleanup(){document.body.classList.remove('printing-labels');$('label-paper')?.remove();}
-            $('label-count').oninput=draw;$('label-size').onchange=draw;
+            for(const key of ['count','width','height','gap','margin'])$('label-'+key).oninput=()=>{if(key==='width'||key==='height')$('label-size').value='custom';draw();};
+            $('label-size').onchange=()=>{if($('label-size').value!=='custom'){const [w,h]=$('label-size').value.split(',');$('label-width').value=w;$('label-height').value=h;}draw();};
             $('label-close').onclick=()=>{cleanup();dialog.close();};dialog.addEventListener('close',cleanup);dialog.addEventListener('cancel',cleanup);
-            $('label-print').onclick=async()=>{draw();await Promise.all([...dialog.querySelectorAll('img')].map(img=>img.decode()));document.body.classList.add('printing-labels');const [width,height]=$('label-size').value.split(',').map(Number);try{await request('print',{labels:true,width,height});}catch(e){alert(e.message);}finally{document.body.classList.remove('printing-labels');}};
+            async function print(){
+                draw();if(!layout){alert('Revise a quantidade e o tamanho das etiquetas.');return;}
+                await Promise.all([...dialog.querySelectorAll('img')].map(img=>img.decode()));document.body.classList.add('printing-labels');
+                try{await request('print',layout);}catch(e){alert(e.message);}finally{document.body.classList.remove('printing-labels');}
+            }
+            $('label-print').onclick=()=>print();
             draw();dialog.showModal();
         }catch(e){alert(e.message);}
     }
@@ -225,6 +271,11 @@
     function preparePdf(){
         cleanupPdf();
         document.querySelector('.pdf-filter-summary')?.remove();
+        if(current===0){
+            const summary=document.createElement('div');summary.className='pdf-filter-summary';
+            summary.textContent=`Estoque: posição atual. Resumo financeiro: ${String(financeMonth).padStart(2,'0')}/${financeYear}, pela data da compra.`;
+            document.querySelector('.dashboard-heading').after(summary);
+        }
         if(current===6){
             const date=s=>s?s.split('-').reverse().join('/'):'Sem limite';
             const summaryFor=tab=>{const summary=document.createElement('div');summary.className='pdf-filter-summary';summary.textContent=`Relatório: ${tab}\nPeríodo: ${date(inicioRel)} a ${date(fimRel)}    •    Local: ${localRel||'Todos os locais'}    •    Categoria: ${categoriaRel||'Todas as categorias'}`;return summary;};
@@ -259,22 +310,45 @@
         document.querySelector('main').scrollTop=0;
         document.body.dataset.screen=String(current);
         if(current===8) document.querySelector('#page .content > .notice')?.remove();
+        if(current===5||current===8){
+            const title=page.querySelector('h1'),subtitle=title.nextElementSibling,header=document.createElement('div'),text=document.createElement('div'),button=document.createElement('button');
+            header.className='products-heading';title.before(header);text.append(title,subtitle);button.type='button';button.id='page-export-pdf';button.className='action secondary';button.textContent='Exportar PDF';button.onclick=()=>window.print();header.append(text,button);
+        }
         if(current===1){
             const title=page.querySelector('h1'),subtitle=title.nextElementSibling,button=page.querySelector('button.action');
             const heading=document.createElement('div'),text=document.createElement('div');heading.className='products-heading';
             title.before(heading);text.append(title,subtitle);heading.append(text,button);
         }
         if(current===0) {
+            const title=page.querySelector('h1'),subtitle=title.nextElementSibling,heading=document.createElement('div'),headingText=document.createElement('div'),exportButton=document.createElement('button');
+            heading.className='products-heading dashboard-heading';title.before(heading);headingText.append(title,subtitle);exportButton.type='button';exportButton.id='dashboard-export-pdf';exportButton.className='action secondary';exportButton.textContent='Exportar PDF';exportButton.onclick=()=>window.print();heading.append(headingText,exportButton);
+            page.querySelector('.grid>.card:last-child')?.classList.add('dashboard-quick-actions');
+            const lowTable=[...page.querySelectorAll('.panel')].find(p=>p.querySelector('h2')?.textContent==='Produtos com estoque baixo')?.querySelector('table');
+            if(lowTable){const wrapper=document.createElement('div');wrapper.className='low-stock-scroll';lowTable.before(wrapper);wrapper.append(lowTable);}
             dataNotice(document.querySelector('#page > .notice'),'Os dados são salvos automaticamente neste computador. Use os atalhos para registrar entradas e saídas.');
             const financial=[...document.querySelectorAll('#page .panel')].find(x=>x.querySelector('h2')?.textContent==='Resumo financeiro ilustrativo');
             if(financial) {
                 financial.querySelector('h2').textContent='Resumo financeiro';
-                const totals={}; compras.forEach(c=>{if(c.valor!==null)totals[c.local]=(totals[c.local]||0)+c.valor;});
-                const top=Object.entries(totals).sort((a,b)=>b[1]-a[1])[0];
-                financial.querySelectorAll('.card b')[2].textContent=top?.[0]||'Sem dados';
-                const refs=compras.filter(c=>c.ref!==null&&c.valor!==null);
-                financial.querySelectorAll('.card b')[1].textContent=refs.length?referenceMoney(refs.reduce((a,c)=>a+c.ref-c.valor,0)):'Não calculada';
-                financial.querySelector('p.muted').textContent=`Valores das compras registradas. ${compras.filter(c=>c.unknown).length} item(ns) sem custo conhecido; economia calculada em ${refs.length} de ${compras.length} itens com referência.`;
+                const months=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+                const filters=document.createElement('div');filters.className='two finance-filters';filters.style.cssText='max-width:520px;margin-bottom:18px;gap:12px';
+                const years=compras.map(c=>Number(c.data.slice(0,4))).filter(Number.isFinite);years.push(new Date().getFullYear(),financeYear);
+                filters.innerHTML='<div><label for="finance-month">Mês da compra</label><select id="finance-month"></select></div><div><label for="finance-year">Ano da compra</label><select id="finance-year"></select></div>';
+                financial.querySelector('h2').after(filters);
+                months.forEach((m,i)=>$('finance-month').add(new Option(m,String(i+1))));
+                for(let y=Math.max(...years)+1;y>=Math.min(...years)-1;y--)$('finance-year').add(new Option(String(y),String(y)));
+                $('finance-month').value=financeMonth;$('finance-year').value=financeYear;
+                function updateFinance(){
+                    financeMonth=Number($('finance-month').value);financeYear=Number($('finance-year').value);
+                    const key=financeYear+'-'+String(financeMonth).padStart(2,'0'),items=compras.filter(c=>c.data.startsWith(key));
+                    const refs=items.filter(c=>c.ref!==null&&c.valor!==null),totals={};
+                    items.forEach(c=>{if(c.valor!==null)totals[c.local]=(totals[c.local]||0)+c.valor;});
+                    const top=Object.entries(totals).sort((a,b)=>b[1]-a[1])[0],cards=financial.querySelectorAll('.card b');
+                    cards[0].textContent=referenceMoney(items.reduce((sum,c)=>sum+(c.valor??0),0));
+                    cards[1].textContent=refs.length?referenceMoney(refs.reduce((sum,c)=>sum+c.ref-c.valor,0)):'Não calculada';
+                    cards[2].textContent=top?.[0]||'Sem dados';cards[2].title=top?referenceMoney(top[1]):'Nenhuma compra com valor informado neste período';
+                    financial.querySelector('p.muted').textContent=`Período: ${months[financeMonth-1]} de ${financeYear} (data da compra). ${items.length} item(ns) de compra; ${items.filter(c=>c.unknown).length} sem custo conhecido. Economia calculada em ${refs.length} de ${items.length} itens com referência. Valores negativos indicam custo adicional.`;
+                }
+                $('finance-month').onchange=updateFinance;$('finance-year').onchange=updateFinance;updateFinance();
             }
         }
         if(current===2) {
@@ -298,7 +372,7 @@
         const note=document.querySelector('#page .panel p.muted');
         if(note) note.textContent='Movimentações registradas no computador. Consulte por período, produto, tipo, responsável e setor.';
         const panel=document.querySelector('#page .panel'); if(!panel)return;
-        const filters=document.createElement('details'); filters.style.marginBottom='16px';
+        const filters=document.createElement('details'); filters.className='history-filter-controls';filters.style.marginBottom='16px';
         filters.innerHTML='<summary style="cursor:pointer;color:#20366c">Filtrar movimentações</summary><div class="filtergrid"><div><label>Data inicial</label><input type="date" id="history-start"></div><div><label>Data final</label><input type="date" id="history-end"></div><div><label>Tipo</label><select id="history-type"><option>Todos</option><option>Entrada</option><option>Saída</option><option>Ajuste +</option><option>Ajuste −</option></select></div><div><label>Produto</label><input id="history-product"></div><div><label>Responsável</label><input id="history-person"></div><div><label>Setor</label><input id="history-sector"></div></div>';
         panel.insertBefore(filters,panel.querySelector('table'));
         function filter() {
@@ -340,9 +414,13 @@
             m.Date=($('datarecebimento').value||localDate(new Date()))+'T'+new Date().toTimeString().slice(0,8);
             m.Total=total;m.ReferenceTotal=ref===''?null:Number(ref)*quantity*factor;m.Invoice=$('invoice')?.value.trim()||'';
         }
-        const id=selected.id;sync(await request('move',m));const updated=produtos.find(p=>p.id===id);
+        const labelsQuantity=quantity*factor;const id=selected.id;sync(await request('move',m));const updated=produtos.find(p=>p.id===id);
         $('msg').textContent=`Movimentação registrada. Novo saldo: ${updated.saldo} ${updated.un}.`;
         $('formmov').classList.add('hide');$('produto').innerHTML='';selected=null;
+        if(m.Type==='Entrada'){
+            document.querySelector('#entry-label-action')?.remove();const button=document.createElement('button');button.id='entry-label-action';button.type='button';button.className='action secondary';button.textContent=`Imprimir ${labelsQuantity} etiquetas desta entrada`;
+            button.onclick=()=>openLabel(id,labelsQuantity,`Entrada registrada: ${quantity} × ${m.Package}. Total: ${labelsQuantity} ${updated.un} = ${labelsQuantity} etiquetas.`);$('msg').after(button);
+        }
         $('codigo').value='';requestAnimationFrame(()=>$('codigo')?.focus());
     });};
     desenhaRelatorio=function(){
@@ -378,4 +456,9 @@
         addContextMenu();show(0);document.documentElement.style.visibility='visible';request('ready');
     }).catch(e=>{document.documentElement.style.visibility='visible';page.innerHTML='<h1>Não foi possível carregar o estoque</h1><p>'+esc(e.message)+'</p>';});
 })();
+
+
+
+
+
 

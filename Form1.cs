@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
+
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -81,6 +82,12 @@ public partial class Form1 : Form
                 case "load": Reply(id,state); break;
                 case "ready": Ready.TrySetResult(); Reply(id,true); break;
                 case "generateCode": Reply(id,BarcodeService.Generate(state)); break;
+                case "getLabelProfile":
+                    var profileFile=Path.Combine(Path.GetDirectoryName(databasePath??InventoryStore.DataPath)!,"label-profile.json");
+                    Reply(id,File.Exists(profileFile)?JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(profileFile)):null);break;
+                case "saveLabelProfile":
+                    if(payload.ValueKind!=JsonValueKind.Object||payload.GetRawText().Length>2048)throw new ArgumentException("Configuração inválida.");
+                    File.WriteAllText(Path.Combine(Path.GetDirectoryName(databasePath??InventoryStore.DataPath)!,"label-profile.json"),payload.GetRawText());Reply(id,true);break;
                 case "barcode":
                     var labelProduct=state.Products.SingleOrDefault(p=>p.Id==payload.GetGuid()) ?? throw new ArgumentException("Salve o produto antes de imprimir a etiqueta.");
                     Reply(id,new { id=labelProduct.Id,code=labelProduct.Code,name=labelProduct.Name,unit=labelProduct.Unit,location=labelProduct.Location,svg=BarcodeService.Svg(labelProduct.Code) }); break;
@@ -118,7 +125,7 @@ public partial class Form1 : Form
                         using var save=new SaveFileDialog { Filter="Documento PDF (*.pdf)|*.pdf",DefaultExt="pdf",AddExtension=true,FileName=(labels?"Etiquetas_":"Relatorio_Estoque_")+DateTime.Now.ToString("yyyyMMdd_HHmm")+".pdf" };
                         if(save.ShowDialog(this)==DialogResult.OK)
                         {
-                            await ExportPdf(save.FileName,labels,labels?payload.GetProperty("width").GetDouble():0,labels?payload.GetProperty("height").GetDouble():0);
+                            await ExportPdf(save.FileName,labels,labels?payload.GetProperty("width").GetDouble():0,labels?payload.GetProperty("height").GetDouble():0,false);
                             try { Process.Start(new ProcessStartInfo(save.FileName){UseShellExecute=true}); }
                             catch { MessageBox.Show(this,"PDF salvo em:\n"+save.FileName,"PDF gerado"); }
                         }
@@ -139,31 +146,43 @@ public partial class Form1 : Form
         busy = true;
         try
         {
+            Guid? requestedLabel=null;
             using var advanced = new LegacyForm(databasePath);
+            advanced.LabelRequested=id=>requestedLabel=id;
             advanced.Text = "Campos | Ferramentas de gestão";
             if(screen != null) advanced.OpenScreen(screen);
             advanced.ShowDialog(this);
             state = store.Load();
             Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { inventory = state }));
+            if(requestedLabel.HasValue)_=Browser.CoreWebView2.ExecuteScriptAsync("desktopTest.openLabel("+JsonSerializer.Serialize(requestedLabel.Value)+")");
         }
         finally { busy = false; }
     }
-    internal async Task ExportPdf(string path,bool labels=false,double width=0,double height=0)
+    internal async Task ExportPdf(string path,bool labels=false,double width=0,double height=0,bool? landscape=null)
     {
+        bool horizontal=landscape??false;
+        await Browser.CoreWebView2.ExecuteScriptAsync("document.body.classList.toggle('pdf-portrait',"+(!horizontal?"true":"false")+")");
+        if(labels)await Browser.CoreWebView2.ExecuteScriptAsync("window.desktopOrientLabels?.("+(horizontal?"true":"false")+")");
         if(!labels)await Browser.CoreWebView2.ExecuteScriptAsync("desktopTest.preparePdf()");
-        var settings=Browser.CoreWebView2.Environment.CreatePrintSettings();
-        settings.ShouldPrintHeaderAndFooter=false;
-        settings.ShouldPrintBackgrounds=true;
-        settings.ScaleFactor=1;
-        settings.PageWidth=labels?width/25.4:210/25.4;
-        settings.PageHeight=labels?height/25.4:297/25.4;
-        settings.Orientation=labels?CoreWebView2PrintOrientation.Portrait:CoreWebView2PrintOrientation.Landscape;
-        settings.MarginTop=settings.MarginBottom=settings.MarginLeft=settings.MarginRight=labels?0:10/25.4;
+        var settings=PrintSettings(labels,width,height,horizontal);
         try
         {
             if(!await Browser.CoreWebView2.PrintToPdfAsync(path,settings))throw new IOException("Não foi possível gerar o PDF. Escolha outro local e tente novamente.");
         }
-        finally { if(!labels)await Browser.CoreWebView2.ExecuteScriptAsync("desktopTest.cleanupPdf()"); }
+        finally { await Browser.CoreWebView2.ExecuteScriptAsync("document.body.classList.remove('pdf-portrait');"+(!labels?"desktopTest.cleanupPdf()":"")); }
+    }
+    private CoreWebView2PrintSettings PrintSettings(bool labels,double width,double height,bool landscape)
+    {
+        if(labels&&!((Math.Abs(width-210)<0.01&&Math.Abs(height-297)<0.01)||(Math.Abs(width-297)<0.01&&Math.Abs(height-210)<0.01)))throw new ArgumentException("As etiquetas são geradas somente em folha A4.");
+        var settings=Browser.CoreWebView2.Environment.CreatePrintSettings();
+        settings.ShouldPrintHeaderAndFooter=false;
+        settings.ShouldPrintBackgrounds=true;
+        settings.ScaleFactor=1;
+        settings.PageWidth=210/25.4;
+        settings.PageHeight=297/25.4;
+        settings.Orientation=landscape?CoreWebView2PrintOrientation.Landscape:CoreWebView2PrintOrientation.Portrait;
+        settings.MarginTop=settings.MarginBottom=settings.MarginLeft=settings.MarginRight=labels?0:10/25.4;
+        return settings;
     }
     private void Export(JsonElement payload)
     {
@@ -178,6 +197,9 @@ public partial class Form1 : Form
         File.WriteAllLines(dialog.FileName,rows,new UTF8Encoding(true));
     }
 }
+
+
+
 
 
 

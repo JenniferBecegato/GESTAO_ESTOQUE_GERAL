@@ -40,3 +40,21 @@ A opção Imprimir / Salvar em PDF gera um arquivo PDF diretamente. Escolha onde
 
 ## Relatório completo em PDF
 A exportação na tela Relatórios inclui as sete abas (Resumo, Gastos, Economia, Consumo, Estoque, Preços e Locais de compra) no mesmo arquivo, com uma seção por aba. Período, categoria e local selecionados são preservados durante toda a geração. A aba que estiver aberta na tela não limita o conteúdo exportado. Os filtros mantêm o significado da tela: período filtra compras e saídas; categoria filtra também o saldo atual; local filtra compras. A posição do estoque é atual. Se uma seção não tiver registros nos filtros aplicados, essa condição é informada. Ao terminar, a tela retorna à aba que estava selecionada.
+
+## Argox OS-2140plus, bobina e folha A4
+Ao confirmar uma entrada, o botão de etiquetas sugere a quantidade convertida: 1 caixa com fator 50 oferece 50 etiquetas, todas com o mesmo código do produto. A movimentação não é repetida ao imprimir. A lista de produtos sugere a quantidade da última entrada; o usuário pode alterar antes de imprimir.
+
+Na prévia, escolha Bobina / Argox ou Folha A4, medidas da etiqueta, espaço entre elas, colunas da bobina e margem de A4. As configurações são salvas ao lado do banco em label-profile.json. As dimensões não podem ser determinadas com precisão por fotografia: meça o rótulo sem incluir o intervalo entre etiquetas. Na bobina, informe quantos rótulos existem lado a lado. Em A4, as linhas e colunas são calculadas conforme medidas e margem.
+
+Escolher impressora e imprimir abre o seletor do Windows e envia uma única cópia do documento, que já contém a quantidade de etiquetas. Se houver uma impressora Argox instalada, ela é sugerida no modo bobina. O driver Windows correspondente deve estar instalado, com papel e sensor de intervalo configurados/calibrados para a mídia usada. Não há instalação automática de driver nem envio de teste físico.
+
+Gerar PDF preserva o papel escolhido: A4 ou largura total da bobina por altura do rótulo. A última linha contém somente as etiquetas necessárias. Teste uma etiqueta e confira o leitor/alinhamento antes de imprimir a quantidade completa. Códigos numéricos válidos com 13 dígitos usam EAN-13; demais códigos usam Code 128.
+
+## Atualização: etiquetas somente em PDF A4
+As opções de bobina/Argox e impressão direta de etiquetas foram retiradas. A prévia de etiquetas oferece somente Gerar PDF, em A4 (210 × 297 mm), com várias etiquetas distribuídas por folha. O padrão compacto de 30 × 20 mm, margem de 5 mm e intervalo de 1 mm comporta até 78 etiquetas por folha. A quantidade continua vinculada às unidades recebidas: uma caixa com 50 unidades gera 50 etiquetas do mesmo código. O arquivo contém apenas a quantidade solicitada e usa folhas adicionais somente quando necessário. Configurações antigas de bobina são substituídas pelo perfil A4. Para imprimir, abra o PDF e selecione papel A4, tamanho real/100% e uma cópia.
+
+## Orientação de todos os PDFs
+Todos os botões de PDF apresentam a escolha A4 em Retrato (vertical) ou Paisagem (horizontal) antes de salvar. Histórico e Descrição do sistema também possuem Exportar PDF no canto superior direito. Tabelas quebram textos longos e continuam em novas páginas, sem limitar o documento à área de rolagem da tela. Os relatórios reorganizam os cartões e gráficos no modo retrato. As etiquetas recalculam linhas, colunas e páginas conforme a orientação, preservando o tamanho físico do rótulo e a quantidade exata. Não há impressão em bobina nem envio direto para impressoras de etiquetas; as etiquetas continuam somente em PDF A4.
+
+## Exportação direta, sem pergunta de orientação
+Exportar PDF abre diretamente a janela para escolher a pasta e o nome do arquivo. Os PDFs são gerados em A4 retrato, com conteúdo ajustado à página e paginação automática. A janela de orientação foi removida. Na impressão pelo Adobe Acrobat ou outro leitor, selecione papel A4 e Ajustar/Ajustar à área imprimível; orientação pode ser escolhida na própria impressão. PDFs têm diagramação fixa: escala personalizada de 100% pode cortar conteúdo se o papel ou a orientação da impressora forem diferentes. Na captura enviada, o papel de impressão estava em Carta (215,9 × 279,4 mm), diferente de A4 (210 × 297 mm).
