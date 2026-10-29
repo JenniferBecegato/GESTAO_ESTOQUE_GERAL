@@ -44,6 +44,9 @@ public sealed class MovementPart
 {
     public int PackageIndex { get; set; } = -1;
     public decimal Quantity { get; set; }
+    public Package? NewPackage { get; set; }
+    public string Name { get; set; } = "";
+    public decimal Factor { get; set; }
 }
 public sealed class Movement
 {
@@ -145,7 +148,7 @@ public static class InventoryRules
             p.Minimum=checked(minimumPackages*p.Packages[0].Factor);
             p.Target=Math.Max(p.Target,p.Minimum);
         }
-        if (p.Minimum < 0 || p.Target < p.Minimum) throw new ArgumentException("O estoque desejado deve ser igual ou maior que o mínimo.");
+        if (p.Minimum < 0 || p.Minimum != decimal.Truncate(p.Minimum) || p.Target < p.Minimum) throw new ArgumentException("Informe um mínimo inteiro não negativo e estoque desejado igual ou maior que o mínimo.");
         if(p.PurchaseQuantity<=0||p.PurchaseQuantity!=decimal.Truncate(p.PurchaseQuantity)||p.PurchaseTotal<0)throw new ArgumentException("Informe quantidade comprada inteira positiva e valor total não negativo.");
         var codes = new List<string> { p.Code };
         if(p.CodeAliases.Any(c=>string.IsNullOrWhiteSpace(c)||c.Length>128||c.Any(char.IsControl)))throw new ArgumentException("Código alternativo inválido.");
@@ -159,8 +162,6 @@ public static class InventoryRules
         var other = state.Products.Where(x => x.Id != p.Id).SelectMany(x => new[] { x.Code }.Concat(x.CodeAliases).Concat(x.Packages.Select(y => y.Code))).Where(x => x.Length > 0);
         if (other.Any(x => codes.Contains(x, StringComparer.OrdinalIgnoreCase))) throw new ArgumentException("Um dos códigos já pertence a outro produto ou embalagem.");
         p.PurchaseUnitCost=p.PurchaseTotal/(p.PurchaseQuantity*(p.Packages.FirstOrDefault()?.Factor??1));
-        var old = state.Products.FirstOrDefault(x => x.Id == p.Id);
-        if (old != null && old.Unit != p.Unit && state.Movements.Any(x => x.ProductId == p.Id)) throw new ArgumentException("A unidade de um produto movimentado não pode ser alterada.");
     }
     public static void LinkCode(Inventory state,Guid productId,string code)
     {
@@ -174,17 +175,32 @@ public static class InventoryRules
     {
         var p = state.Products.Single(x => x.Id == m.ProductId);
         if (!p.Active) throw new ArgumentException("O produto está inativo.");
+        // Resolve into local values first: rejected operations must not save packaging.
+        var packages = new List<Package>(p.Packages);
+        var parts = new List<MovementPart>();
         if(m.Parts.Count>0){
-            if(m.Type!="Saída")throw new ArgumentException("Combinação de apresentações disponível apenas na saída.");
+            if(m.Type!="Saída" && m.Type!="Entrada")throw new ArgumentException("Apresentações disponíveis apenas em entrada e saída.");
+            if(m.Type=="Entrada" && m.Parts.Count!=1)throw new ArgumentException("Informe uma apresentação por entrada.");
             decimal total=0;var descriptions=new List<string>();
             foreach(var part in m.Parts){
-                if(part.Quantity<=0||part.Quantity!=decimal.Truncate(part.Quantity)||part.PackageIndex< -1||part.PackageIndex>=p.Packages.Count)throw new ArgumentException("Apresentação ou quantidade inválida.");
-                var pack=part.PackageIndex<0?null:p.Packages[part.PackageIndex];
-                total=checked(total+part.Quantity*(pack?.Factor??1));descriptions.Add(part.Quantity+" "+(pack?.Name??p.Unit));
+                if(part.Quantity<=0||part.Quantity!=decimal.Truncate(part.Quantity))throw new ArgumentException("Apresentação ou quantidade inválida.");
+                int index=part.PackageIndex;
+                if(part.NewPackage is {} candidate){
+                    if(index!=-1||string.IsNullOrWhiteSpace(candidate.Name)||candidate.Name.Trim().Length>80||candidate.Name.Any(char.IsControl)||candidate.Factor<1||candidate.Factor!=decimal.Truncate(candidate.Factor))throw new ArgumentException("Informe nome e conteúdo inteiro positivo para a embalagem.");
+                    string name=candidate.Name.Trim();
+                    index=packages.FindIndex(pack=>pack.Name.Equals(name,StringComparison.OrdinalIgnoreCase)&&pack.Factor==candidate.Factor);
+                    if(index<0){index=packages.Count;packages.Add(new Package{Name=name,Factor=candidate.Factor});}
+                }else if(index< -1||index>=p.Packages.Count)throw new ArgumentException("Embalagem não encontrada.");
+                var pack=index<0?null:packages[index];
+                decimal factor=pack?.Factor??1;
+                if(factor<1||factor!=decimal.Truncate(factor))throw new ArgumentException("Conteúdo da embalagem inválido.");
+                parts.Add(new MovementPart{PackageIndex=index,Quantity=part.Quantity,Name=pack?.Name??p.Unit,Factor=factor});
+                total=checked(total+part.Quantity*factor);
+                descriptions.Add(part.Quantity+" "+(pack==null?p.Unit:pack.Name+" com "+factor+" "+p.Unit));
             }
-            m.Quantity=total;m.Factor=1;m.Package=string.Join(" + ",descriptions);
+            m.Quantity=parts.Count==1?parts[0].Quantity:total;m.Factor=parts.Count==1?parts[0].Factor:1;m.Package=string.Join(" + ",descriptions);
         }
-        if (m.Quantity <= 0 || m.Quantity != decimal.Truncate(m.Quantity) || m.Factor <= 0 || string.IsNullOrWhiteSpace(m.Person)) throw new ArgumentException("Informe quantidade inteira positiva e responsável.");
+        if (m.Quantity <= 0 || m.Quantity != decimal.Truncate(m.Quantity) || m.Factor <= 0 || m.Factor != decimal.Truncate(m.Factor) || string.IsNullOrWhiteSpace(m.Person)) throw new ArgumentException("Informe quantidade e fator inteiros positivos e responsável.");
         m.Converted = checked(m.Quantity * m.Factor);
         if (m.Type != "Entrada" && m.Converted > p.Balance) throw new ArgumentException("A quantidade supera o saldo disponível.");
         if (m.Type.StartsWith("Ajuste") && string.IsNullOrWhiteSpace(m.Note)) throw new ArgumentException("O ajuste exige um motivo.");
@@ -198,6 +214,8 @@ public static class InventoryRules
         }
         else if (m.Type == "Ajuste +") { p.Balance += m.Converted; p.AverageCost = null; }
         else { m.AppliedCost = p.AverageCost; p.Balance -= m.Converted; }
+        if(packages.Count!=p.Packages.Count){p.Packages=packages;p.ControlLevels=[];p.MinimumPackageQuantity=null;}
+        if(parts.Count>0)m.Parts=parts;
         state.Movements.Add(m);
     }
 }

@@ -1,4 +1,4 @@
-﻿// Integração local. O HTML/CSS do protótipo é preservado integralmente.
+// Integração local. O HTML/CSS do protótipo é preservado integralmente.
 (() => {
     'use strict';
     const pending = new Map();
@@ -197,13 +197,14 @@
     function arrangeRegistration(){
         const panel=document.querySelector('#page .panel');
         panel.classList.add('registration-panel');
+        $('page').querySelector('h1').nextElementSibling.textContent='Cadastre o produto e escolha a medida usada no saldo do estoque.';
         const columns=document.createElement('div');columns.className='two';
         $('nome').spellcheck=true;$('nome').lang='pt-BR';
         $('un').placeholder='Ex.: unidade, caixa, pacote';
-        for(const key of ['min','factor']){$(key).type='text';$(key).inputMode='numeric';}
+        $('min').type='text';$('min').inputMode='numeric';
         const definitions=[
-            [['code','Código de barras ou código interno'],['nome','Nome do produto'],['cat','Categoria'],['un','Menor item controlado nas saídas (ex.: pacote ou rolo)']],
-            [['min','Estoque mínimo'],['local','Local de armazenamento'],['emb','Embalagem de compra (opcional)'],['factor','Unidades de controle em cada caixa / fardo']]
+            [['code','Código de barras ou código interno'],['nome','Nome do produto'],['cat','Categoria'],['un','Controlar estoque em']],
+            [['min','Estoque mínimo'],['local','Local de armazenamento']]
         ];
         for(const fields of definitions){
             const column=document.createElement('div');column.className='form-column';
@@ -214,109 +215,44 @@
             columns.append(column);
         }
         const button=panel.querySelector('button.action'),message=$('msg'),help=document.createElement('p');
-        help.className='muted registration-help';help.textContent='Sulfite: controle por pacote e cadastre 1 caixa = 100 pacotes; as 500 folhas do pacote não precisam ser cadastradas. Papel higiênico: controle por rolo apenas se houver retirada de rolos avulsos; nesse caso cadastre fardo e pacote em rolos.';
+        help.className='muted registration-help';
         panel.replaceChildren(columns,help,button,message);
-        $('min').insertAdjacentHTML('afterend','<small id="minimum-conversion" class="muted"></small>');
         const input=$('code'),group=document.createElement('div'),generate=document.createElement('button');
         group.className='code-entry';input.before(group);generate.type='button';generate.id='generate-barcode';generate.textContent='Gerar código';generate.title='Produto sem código de barras: gerar código interno único';
         generate.onclick=async()=>{generate.disabled=true;try{input.value=await request('generateCode');lastSavedProduct=null;input.dispatchEvent(new Event('change'));}catch(e){alert(e.message);}finally{generate.disabled=false;}};
         group.append(input,generate);
         const print=document.createElement('button');print.type='button';print.id='print-saved-label';print.className='action secondary';print.textContent='Imprimir etiqueta';print.hidden=true;print.onclick=()=>openLabel(lastSavedProduct);button.after(print);
         input.addEventListener('input',()=>{lastSavedProduct=null;print.hidden=true;});
-        function updatePurchase(){
-            const packaged=!!$('emb').value;
-            document.querySelector('label[for="factor"]').textContent=packaged?'Unidades de controle em cada '+$('emb').value.toLocaleLowerCase('pt-BR'):'Unidades por item avulso';
-            document.querySelector('label[for="factor"]').textContent=packaged?'Quantos '+($('un').value.trim()||'itens controlados')+' há em cada '+$('emb').value.toLocaleLowerCase('pt-BR')+'?':'Itens por unidade de controle';
-            $('factor').disabled=!packaged;
-            const minimumFactor=packaged?Number($('factor').value):1,minimum=Number($('min').value),controlUnit=$('un').value.trim()||'unidade';
-            document.querySelector('label[for="min"]').textContent='Estoque mínimo (em '+(packaged?$('emb').value.toLocaleLowerCase('pt-BR'):controlUnit)+')';
-            $('minimum-conversion').textContent=packaged&&minimumFactor>0?`Equivale a ${minimum*minimumFactor} ${controlUnit} no estoque.`:'';
-
-        }
-        for(const key of ['factor','emb','un','min'])$(key).addEventListener('input',updatePurchase);
-        window.updateRegistrationPurchase=updatePurchase;updatePurchase();
-        const packages=document.createElement('div');packages.id='extra-packages';packages.style.cssText='width:100%;margin-top:12px';
-        const add=document.createElement('button');add.type='button';add.className='action secondary';add.textContent='+ Adicionar outra embalagem';
-        add.title='Use somente se também controlar uma embalagem intermediária. Todas as conversões usam o menor item controlado.';
-        add.onclick=()=>addPackageField({Name:'',Factor:1,Code:''});panel.insertBefore(packages,help);panel.insertBefore(add,help);
-        function addPackageField(pack={Name:'Pacote',Factor:4,Code:''}){
-            const row=document.createElement('div');row.className='extra-package-row';row.dataset.original=JSON.stringify(pack);row.style.cssText='display:flex;gap:12px;align-items:end;margin-bottom:10px';
-            row.innerHTML='<div style="flex:1"><label>Outra embalagem (ex.: Pacote)</label><input class="package-name"></div><div style="flex:1"><label>Unidades de controle nessa embalagem</label><input class="package-factor" type="text" inputmode="numeric"></div><button type="button" class="label-action">Remover</button>';
-            row.querySelector('.package-factor').previousElementSibling.textContent='Quantidade de '+($('un').value.trim()||'itens controlados')+' nessa embalagem';
-            row.querySelector('.package-name').value=pack.Name;row.querySelector('.package-factor').value=pack.Factor;row.querySelector('button').onclick=()=>row.remove();packages.append(row);
-        }
-        window.addRegistrationPackage=addPackageField;
-        const migration=document.createElement('div');migration.id='unit-migration';migration.hidden=true;migration.style.cssText='width:100%;margin-top:10px';migration.innerHTML='<label for="unit-conversion">Conversão do saldo existente: quantas novas unidades existem em cada unidade antiga?</label><input id="unit-conversion" type="text" inputmode="numeric" placeholder="Ex.: 4 rolos por pacote antigo"><small>Para apenas renomear unidade para pacote, informe 1. Para converter pacote em 4 rolos, informe 4. O histórico anterior será preservado.</small>';panel.insertBefore(migration,help);
-        $('un').addEventListener('input',()=>{migration.hidden=!editingProduct||$('un').value.trim()===editingProduct.Unit;});
-        configureControlLevels(panel,help,add,packages);
-
-    }
-    function configureControlLevels(panel,help,legacyAdd,legacyPackages){
-        legacyAdd.hidden=true;legacyPackages.hidden=true;
-        const section=document.createElement('section');section.id='control-levels';section.style.cssText='width:100%;margin-top:12px';
-        section.innerHTML=`<h2 style="font-size:16px;margin:0 0 8px">Apresentações controladas</h2>
-        <div class="control-level-row" id="level-upper-row"><div><label for="emb">Compra / embalagem maior</label></div><div><label id="level-upper-count-label" for="factor">Quantidade dentro da embalagem</label></div><div><label for="min">Estoque mínimo de caixas / fardos</label></div></div>
-        <div class="control-level-row"><div><label><input type="checkbox" id="level-package"> Controlar pacote</label></div><div id="level-package-count-field"><label for="level-package-count">Unidades em cada pacote</label><input id="level-package-count" type="text" inputmode="numeric" value="1"></div><div id="level-package-min-field"><label for="level-package-min">Estoque mínimo de pacotes</label><input id="level-package-min" type="text" inputmode="numeric" value="0"></div></div>
-        <div class="control-level-row"><div><label><input type="checkbox" id="level-unit" checked> Controlar unidade avulsa</label><div id="level-unit-name"></div></div><div></div><div id="level-unit-min-field"><label for="level-unit-min">Estoque mínimo de unidades</label><input id="level-unit-min" type="text" inputmode="numeric" value="0"></div></div>
-        <p id="level-summary" class="small muted" style="margin:6px 0" aria-live="polite"></p>`;
-        const styles=document.createElement('style');styles.textContent='.control-level-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end;padding:7px 0;border-bottom:1px solid #e4e7ef}.control-level-row input[type=checkbox]{width:auto;height:auto;margin-right:6px}.control-level-row label{font-size:13px}.control-level-row input:not([type=checkbox]),.control-level-row select{height:34px;padding:6px 9px}.control-level-row [hidden]{display:none!important}@media(max-width:850px){.control-level-row{grid-template-columns:repeat(2,minmax(0,1fr))}}';section.prepend(styles);
-        panel.insertBefore(section,help);
-        for(const id of ['emb','factor','min','un']){const input=$(id),old=input.closest('.form-field');old.hidden=true;if(id==='un'){$('level-unit-name').append(input);}else{const column=id==='emb'?0:id==='factor'?1:2;section.querySelector('#level-upper-row').children[column].append(input);}}
-        [...$('emb').options].filter(o=>!['','Caixa','Fardo'].includes(o.value)).forEach(o=>o.remove());
-        if(![...$('emb').options].some(o=>o.value==='Caixa'))$('emb').add(new Option('Caixa','Caixa'));
-        if(![...$('emb').options].some(o=>o.value==='Fardo'))$('emb').add(new Option('Fardo','Fardo'));
-        [...$('emb').options].forEach(o=>{if(o.value==='')o.textContent='Avulso — sem caixa / fardo';});
-        $('un').placeholder='Nome da unidade avulsa (ex.: rolo, caneta)';
-        panel.insertBefore(section,help);
-        help.textContent='Marque somente o que será controlado. O alerta usa o mínimo do menor nível controlado. Ex.: mínimo de 1 caixa (20 pacotes) avisa quando restarem 20 pacotes ou menos.';
-        let dirty=false;
-        function read(){
-            const upper=$('emb').value,hasPackage=$('level-package').checked,hasUnit=$('level-unit').checked;
-            if(!upper&&!hasPackage&&!hasUnit)throw new Error('Selecione pelo menos uma apresentação: caixa/fardo, pacote ou unidade.');
-            const integer=(id,positive=false)=>{const raw=$(id).value.trim(),n=Number(raw);if(!raw||!Number.isSafeInteger(n)||n<(positive?1:0))throw new Error('Informe quantidades inteiras válidas nas apresentações e mínimos.');return n;};
-            const levels=[],unitName=$('un').value.trim()||'unidade';
-            const packageFactor=hasPackage&&hasUnit?integer('level-package-count',true):1;
-            if(upper)levels.push({Kind:'upper',Name:upper,Factor:hasPackage||hasUnit?integer('factor',true)*packageFactor:1,Minimum:integer('min')});
-            if(hasPackage)levels.push({Kind:'package',Name:'pacote',Factor:packageFactor,Minimum:integer('level-package-min')});
-            if(hasUnit)levels.push({Kind:'unit',Name:unitName,Factor:1,Minimum:integer('level-unit-min')});
-            if(new Set(levels.map(l=>l.Name.toLocaleLowerCase('pt-BR'))).size!==levels.length)throw new Error('Use nomes diferentes para os níveis: caixa/fardo, pacote e unidade avulsa.');
-            return levels;
-        }
+        document.querySelector('label[for="un"]').htmlFor='control-unit';
+        const unitChoice=document.createElement('select');unitChoice.id='control-unit';
+        for(const unit of ['unidade','pacote','fardo','caixa'])unitChoice.add(new Option(unit[0].toUpperCase()+unit.slice(1),unit));
+        unitChoice.add(new Option('Outra medida…','other'));$('un').before(unitChoice);
+        $('un').value='unidade';$('un').hidden=true;$('un').placeholder='Ex.: rolo, resma';$('un').setAttribute('aria-label','Nome da outra medida');
+        help.textContent='Escolha a menor medida que você retira. As embalagens serão informadas na Entrada / Retirada e lembradas para as próximas movimentações.';
         function update(){
-            const upper=!!$('emb').value,pack=$('level-package').checked,unit=$('level-unit').checked;
-            $('factor').disabled=!upper||(!pack&&!unit);$('min').disabled=!upper;
-            $('level-package-count-field').hidden=!pack||!unit;$('level-package-min-field').hidden=!pack;
-            $('level-unit-name').hidden=!unit;$('level-unit-min-field').hidden=!unit;
-            $('level-upper-count-label').textContent=pack?'Pacotes por '+($('emb').value||'embalagem'):unit?'Unidades por '+($('emb').value||'embalagem'):'Sem conversão';
-            $('unit-migration').hidden=!editingProduct||((unit?$('un').value.trim()||'unidade':pack?'pacote':$('emb').value)===editingProduct.Unit);
-            try{const levels=read(),base=levels.at(-1).Name;$('level-summary').textContent=levels.map(l=>`1 ${l.Name} = ${l.Factor} ${base} • mínimo: ${l.Minimum} ${l.Name}`).join(' | ');}catch{$('level-summary').textContent='Preencha as quantidades para conferir as conversões.';}
+            document.querySelector('label[for="min"]').textContent='Estoque mínimo (em '+($('un').value.trim()||'itens')+')';
         }
-        section.addEventListener('input',()=>{dirty=true;update();});section.addEventListener('change',()=>{dirty=true;update();});
-        function load(product){
-            const levels=product.ControlLevels||[],packs=product.Packages||[],base=product.Unit.toLocaleLowerCase('pt-BR'),baseIsPackage=base==='pacote'||base==='pacotes';
-            const packageLevel=levels.find(l=>l.Kind==='package'),unitLevel=levels.find(l=>l.Kind==='unit'),upperLevel=levels.find(l=>l.Kind==='upper');
-            const upper=upperLevel||packs.find(p=>['caixa','fardo'].includes(p.Name.toLocaleLowerCase('pt-BR'))),pack=packageLevel||packs.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='pacote');
-            $('emb').value=upper?.Name||'';$('level-package').checked=!!packageLevel||baseIsPackage||!!pack;
-            $('level-unit').checked=levels.length?!!unitLevel:!baseIsPackage&&(!upper||base!==upper.Name.toLocaleLowerCase('pt-BR'));
-            $('un').value=unitLevel?.Name||product.Unit;
-            const lowerFactor=pack?.Factor||(baseIsPackage?1:1);$('factor').value=upper?upper.Factor/lowerFactor:1;
-            $('level-package-count').value=pack?.Factor||1;
-            $('min').value=upperLevel?.Minimum??(upper?product.MinimumPackageQuantity??Math.ceil(product.Minimum/upper.Factor):0);
-            $('level-package-min').value=packageLevel?.Minimum??(!upper&&baseIsPackage?product.Minimum:0);
-            $('level-unit-min').value=unitLevel?.Minimum??(!upper&&!pack&&!baseIsPackage?product.Minimum:0);
-            dirty=false;update();
-        }
-        window.controlSetup={get dirty(){return dirty;},read,load};update();
+        unitChoice.onchange=()=>{$('un').hidden=unitChoice.value!=='other';$('un').value=unitChoice.value==='other'?'':unitChoice.value;update();if(unitChoice.value==='other')$('un').focus();};
+        $('un').addEventListener('input',update);
+        window.loadControlUnit=product=>{
+            $('un').value=product.Unit;$('min').value=product.Minimum;
+            unitChoice.value=['unidade','pacote','fardo','caixa'].includes(product.Unit)?product.Unit:'other';
+            $('un').hidden=unitChoice.value!=='other';update();
+        };
+        update();
     }
     async function openLabel(id,quantity=null,entryInfo='',entryContext=null){
         if(!id){alert('Salve o produto antes de imprimir a etiqueta.');return;}
         try{
             let data=await request('barcode',id);const unitData=data,product=inventory.Products.find(p=>p.Id===id);
-            const latest=entryContext||[...inventory.Movements].reverse().find(m=>m.ProductId===id&&m.Type==='Entrada');
-            const receivedUnits=latest?(latest.Converted??latest.Quantity*latest.Factor):quantity??(product.Packages[0]?.Factor??1);
-            const packageCount=pack=>latest&&latest.Factor===pack.Factor?latest.Quantity:Math.max(1,Math.ceil(receivedUnits/pack.Factor));
+            const lastEntry=entryContext||[...inventory.Movements].reverse().find(m=>m.ProductId===id&&m.Type==='Entrada');
+            // Historical quantities in an earlier measure cannot label the current stock.
+            const latest=lastEntry&&(!lastEntry.Unit||lastEntry.Unit===product.Unit)?lastEntry:null;
+            const receivedUnits=latest?(latest.Converted??latest.Quantity*latest.Factor):quantity??1;
+            const matchesLatest=pack=>latest?.Parts?.length===1?latest.Parts[0].Name===pack.Name&&latest.Parts[0].Factor===pack.Factor:latest?.Factor===pack.Factor&&(latest.Package===pack.Name||latest.Package?.startsWith(pack.Name+' — '));
+            const packageCount=pack=>matchesLatest(pack)?latest.Quantity:Math.max(1,Math.ceil(receivedUnits/pack.Factor));
             const resetRegistration=current===2&&lastSavedProduct===id;
-            const initialPackage=latest?.Factor>1?product.Packages.findIndex(p=>p.Factor===latest.Factor):-1;
+            const initialPackage=latest?product.Packages.findIndex(matchesLatest):-1;
             quantity??=receivedUnits;document.querySelector('#label-dialog')?.remove();
             const dialog=document.createElement('dialog');dialog.id='label-dialog';
             dialog.innerHTML=`<h2>Etiquetas do produto</h2><p class="muted" id="label-entry-info"></p><div class="label-options"><div><label for="label-count">Quantidade de etiquetas</label><input id="label-count" type="number" min="1" max="10000" step="1"></div><div><label>Papel</label><input value="A4 — várias etiquetas por folha" readonly></div></div><div class="label-options"><div><label for="label-size">Formato</label><select id="label-size"><option value="30,20">Compacto: 30 × 20 mm</option><option value="40,20">40 × 20 mm</option><option value="60,40">60 × 40 mm</option><option value="80,50">80 × 50 mm</option><option value="100,50">100 × 50 mm</option><option value="custom">Personalizado</option></select></div><div><label for="label-width">Largura (mm)</label><input id="label-width" type="number" min="25" max="200" step="0.1" value="30"></div><div><label for="label-height">Altura (mm)</label><input id="label-height" type="number" min="15" max="280" step="0.1" value="20"></div></div><div class="label-options"><div><label for="label-gap">Espaço entre etiquetas (mm)</label><input id="label-gap" type="number" min="0" max="15" step="0.1" value="1"></div><div><label for="label-margin">Margem da folha A4 (mm)</label><input id="label-margin" type="number" min="0" max="30" step="0.1" value="5"></div></div><p class="small muted">As etiquetas são distribuídas em linhas e colunas na folha A4. O formato compacto de 30 × 20 mm permite até 78 etiquetas por folha. Imprima uma única cópia: a quantidade já está distribuída no documento.</p><p id="label-layout-summary" class="status"></p><div id="label-print-area"></div><button type="button" class="action" id="label-print">Gerar PDF</button><button type="button" class="action secondary" id="label-close">Fechar</button>`;
@@ -324,7 +260,7 @@
             const targetBox=document.createElement('div');targetBox.innerHTML='<label for="label-target">Onde a etiqueta será colocada?</label><select id="label-target"></select><p id="label-target-note" class="source-note"></p>';
             $('label-entry-info').after(targetBox);
             $('label-target').add(new Option('Em cada produto avulso — '+receivedUnits+' unidades','unit'));
-            product.Packages.forEach((p,i)=>$('label-target').add(new Option('Em cada '+p.Name.toLocaleLowerCase('pt-BR')+' — '+packageCount(p)+' '+p.Name.toLocaleLowerCase('pt-BR'),String(i))));
+            product.Packages.forEach((p,i)=>$('label-target').add(new Option('Em cada '+p.Name.toLocaleLowerCase('pt-BR')+' com '+p.Factor+' '+product.Unit+' — '+packageCount(p)+' '+p.Name.toLocaleLowerCase('pt-BR'),String(i))));
             let saved={};try{saved=await request('getLabelProfile')||{};}catch{}
             if(saved.layoutVersion!==3)saved={width:30,height:20,gap:1,margin:5};
             for(const key of ['width','height','gap','margin'])if(saved[key]!==undefined)$('label-'+key).value=saved[key];
@@ -379,7 +315,7 @@
                         $('label-target-note').textContent=`${receivedUnits} etiquetas iguais para os produtos avulsos. O código é o mesmo da caixa. Selecione a unidade e a quantidade na movimentação.`;
                     }else{
                         const index=Number(target),pack=product.Packages[index];
-                        data={...unitData,packageLabel:pack.Name+' c/ '+pack.Factor};
+                        data={...unitData,packageLabel:pack.Name+' c/ '+pack.Factor+' '+product.Unit};
                         const count=packageCount(pack);
                         $('label-count').value=Math.max(1,count);
                         $('label-target-note').textContent=`${Math.max(1,count)} etiquetas iguais para ${pack.Name}. O código é o mesmo dos produtos avulsos. Selecione a embalagem e a quantidade na movimentação.`;
@@ -395,7 +331,7 @@
     function openLinkCode(code){
         document.querySelector('#link-code-dialog')?.remove();
         const dialog=document.createElement('dialog');dialog.id='link-code-dialog';
-        dialog.innerHTML='<h2>Vincular código a um produto existente</h2><p>Novo código: <strong id="link-new-code"></strong></p><label for="link-product-search">Buscar por nome, categoria ou código</label><input id="link-product-search" placeholder="Ex.: Café"><label for="link-product">Selecione um produto cadastrado</label><select id="link-product" size="6" aria-label="Produtos cadastrados"></select><p id="link-product-details" class="source-note">Escolha o produto ao qual esse código pertence.</p><p class="small muted">Confira se é a mesma apresentação e unidade. Este vínculo identifica uma unidade de controle; se o código for de caixa ou fardo, cadastre a embalagem com o fator correto. O código antigo continuará válido.</p><p id="link-error" role="alert" style="color:#a33232"></p><button type="button" class="action" id="link-save" disabled>Salvar vínculo</button><button type="button" class="action secondary" id="link-cancel">Cancelar</button>';
+        dialog.innerHTML='<h2>Vincular código a um produto existente</h2><p>Novo código: <strong id="link-new-code"></strong></p><label for="link-product-search">Buscar por nome, categoria ou código</label><input id="link-product-search" placeholder="Ex.: Café"><label for="link-product">Selecione um produto cadastrado</label><select id="link-product" size="6" aria-label="Produtos cadastrados"></select><p id="link-product-details" class="source-note">Escolha o produto ao qual esse código pertence.</p><p class="small muted">Confira se é a mesma apresentação e unidade. Este vínculo identifica o produto. Selecione ou informe a embalagem na Entrada / Retirada antes de confirmar. O código antigo continuará válido.</p><p id="link-error" role="alert" style="color:#a33232"></p><button type="button" class="action" id="link-save" disabled>Salvar vínculo</button><button type="button" class="action secondary" id="link-cancel">Cancelar</button>';
         document.body.append(dialog);$('link-new-code').textContent=code;
         function options(){
             const query=$('link-product-search').value.trim().toLocaleLowerCase('pt-BR');
@@ -476,29 +412,14 @@
     function cleanupPdf(){document.body.classList.remove('printing-all-reports');$('all-reports-pdf')?.remove();}
     window.print=()=>request('print').catch(e=>alert(e.message));
     function stockText(product){
-        const pack=product.Packages[0],balance=product.Balance;
-        const name=(value,count)=>count===1?value:value.endsWith('s')?value:value+'s';
-        if(!pack||pack.Factor<=1)return `${balance} ${name(product.Unit,balance)}`;
-        if(product.Packages.length===1){const count=balance>0?Math.ceil(balance/pack.Factor):0;return `${count} ${name(pack.Name.toLocaleLowerCase('pt-BR'),count)} (${balance} ${name(product.Unit,balance)})`;}
-        let remaining=balance;const pieces=[];
-        for(const pack of [...product.Packages].filter(p=>p.Factor>1).sort((a,b)=>b.Factor-a.Factor)){
-            const count=Math.floor(remaining/pack.Factor);
-            if(count){pieces.push(`${count} ${name(pack.Name.toLocaleLowerCase('pt-BR'),count)}`);remaining-=count*pack.Factor;}
-        }
-        if(remaining||!pieces.length)pieces.push(`${remaining} ${name(product.Unit,remaining)}`);
-        return pieces.join(' + ')+(pieces.length>1||remaining===0&&balance>0?` (${balance} ${name(product.Unit,balance)})`:'');
-    }
-    function minimumLevelsText(levels){
-        const text=l=>`${l.Minimum} ${l.Name.toLocaleLowerCase('pt-BR').endsWith('s')||l.Minimum===1?l.Name.toLocaleLowerCase('pt-BR'):l.Name.toLocaleLowerCase('pt-BR')+'s'}`;
-        if(levels.length===1)return text(levels[0]);
-        return levels.slice(0,-1).map(text).join(' + ')+' ('+text(levels.at(-1))+')';
+        return product.Balance+' '+product.Unit;
     }
     table=function(ps) {
         ps=[...ps].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR',{sensitivity:'base',numeric:true}));
         if(!ps.length) return '<table><tr><th>Produto</th><th>Categoria</th><th>Saldo</th><th>Mínimo</th><th>Situação</th></tr><tr><td colspan="5">Nenhum produto encontrado.</td></tr></table>';
         const container=document.createElement('div');container.innerHTML=referenceTable(ps);
         const rows=[...container.querySelectorAll('tr')];if(current!==0)rows[0].insertAdjacentHTML('beforeend','<th>Ações</th>');
-        rows.slice(1).forEach((row,i)=>{const product=inventory.Products.find(p=>p.Id===ps[i].id);if(product){if(product.Balance===0){const status=document.createElement('span');status.textContent='Em falta';status.style.cssText='display:inline-block;color:#b42318;background:#fee4e2;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}else if(product.Balance>product.Minimum){const status=document.createElement('span');status.textContent='Normal';status.style.cssText='display:inline-block;color:#067647;background:#dcfae6;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}row.cells[2].textContent=stockText(product);if(current===1){const code=document.createElement('small');code.className='product-barcode';code.textContent='Código: '+product.Code;code.style.cssText='display:block;margin-top:4px;font:12px Consolas,monospace;overflow-wrap:anywhere';row.cells[0].append(code);}const pack=product.Packages[0];row.cells[3].textContent=product.ControlLevels?.length?minimumLevelsText(product.ControlLevels):product.MinimumPackageQuantity!==null&&product.MinimumPackageQuantity!==undefined&&pack?`${product.MinimumPackageQuantity} ${pack.Name.toLocaleLowerCase('pt-BR')} (${product.Minimum} ${product.Unit})`:`${product.Minimum} ${product.Unit}`;}if(current===0)return;const cell=document.createElement('td');cell.innerHTML=`<div class="product-actions"><button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button><button type="button" class="label-action product-icon" data-edit-product="${esc(ps[i].id)}" title="Editar produto" aria-label="Editar ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5Z M14 5l5 5"/></svg></button><button type="button" class="label-action product-icon product-delete" data-delete-product="${esc(ps[i].id)}" title="Excluir produto" aria-label="Excluir ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>`;if(current!==1)cell.innerHTML=`<button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button>`;row.append(cell);});
+        rows.slice(1).forEach((row,i)=>{const product=inventory.Products.find(p=>p.Id===ps[i].id);if(product){if(product.Balance===0){const status=document.createElement('span');status.textContent='Em falta';status.style.cssText='display:inline-block;color:#b42318;background:#fee4e2;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}else if(product.Balance>product.Minimum){const status=document.createElement('span');status.textContent='Normal';status.style.cssText='display:inline-block;color:#067647;background:#dcfae6;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}row.cells[2].textContent=stockText(product);if(current===1){const code=document.createElement('small');code.className='product-barcode';code.textContent='Código: '+product.Code;code.style.cssText='display:block;margin-top:4px;font:12px Consolas,monospace;overflow-wrap:anywhere';row.cells[0].append(code);}row.cells[3].textContent=product.Minimum+' '+product.Unit;}if(current===0)return;const cell=document.createElement('td');cell.innerHTML=`<div class="product-actions"><button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button><button type="button" class="label-action product-icon" data-edit-product="${esc(ps[i].id)}" title="Editar produto" aria-label="Editar ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5Z M14 5l5 5"/></svg></button><button type="button" class="label-action product-icon product-delete" data-delete-product="${esc(ps[i].id)}" title="Excluir produto" aria-label="Excluir ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>`;if(current!==1)cell.innerHTML=`<button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button>`;row.append(cell);});
         return container.innerHTML;
     };
     render=function() {
@@ -629,7 +550,7 @@
         panel.insertBefore(filters,panel.querySelector('table'));
         function filter() {
             const data=inventory.Movements.filter(m=>(!$('history-start').value||m.Date.slice(0,10)>=$('history-start').value)&&(!$('history-end').value||m.Date.slice(0,10)<=$('history-end').value)&&($('history-type').value==='Todos'||m.Type===$('history-type').value)&&m.ProductName.toLowerCase().includes($('history-product').value.toLowerCase())&&m.Person.toLowerCase().includes($('history-person').value.toLowerCase())&&m.Sector.toLowerCase().includes($('history-sector').value.toLowerCase())).sort((a,b)=>b.Date.localeCompare(a.Date));
-            panel.querySelector('table').outerHTML='<table><tr><th>Data</th><th>Tipo</th><th>Produto</th><th>Quantidade</th><th>Responsável / setor</th></tr>'+data.map(m=>`<tr><td>${esc(new Date(m.Date).toLocaleString('pt-BR'))}</td><td>${esc(m.Type)}</td><td>${esc(m.ProductName)}</td><td>${m.Converted} ${esc(m.Unit)}${m.Parts?.length>1?`<small style="display:block">${esc(m.Package)}</small>`:''}</td><td>${esc(m.Person)} / ${esc(m.Sector)}</td></tr>`).join('')+'</table>';
+            panel.querySelector('table').outerHTML='<table><tr><th>Data</th><th>Tipo</th><th>Produto</th><th>Quantidade</th><th>Responsável / setor</th></tr>'+data.map(m=>`<tr><td>${esc(new Date(m.Date).toLocaleString('pt-BR'))}</td><td>${esc(m.Type)}</td><td>${esc(m.ProductName)}</td><td>${m.Converted} ${esc(m.Unit)}${m.Parts?.length?`<small style="display:block">${esc(m.Package)}</small>`:''}</td><td>${esc(m.Person)} / ${esc(m.Sector)}</td></tr>`).join('')+'</table>';
         }
         filters.querySelectorAll('input,select').forEach(c=>c.addEventListener('input',filter));filter();
         enhancePurchaseHistory();
@@ -669,12 +590,11 @@
         show(2);editingProduct=product;
         $('page').querySelector('h1').textContent='Editar produto';
         document.querySelector('.registration-panel button.action').textContent='Salvar alterações';
-        const fields={code:product.Code,nome:product.Name,cat:product.Category,un:product.Unit,min:product.MinimumPackageQuantity??product.Minimum,local:product.Location,emb:product.Packages[0]?.Name||'',factor:product.Packages[0]?.Factor||1};
+        const fields={code:product.Code,nome:product.Name,cat:product.Category,un:product.Unit,min:product.Minimum,local:product.Location};
         for(const [key,value] of Object.entries(fields)){
             const field=$(key);if(field.tagName==='SELECT'&&value&&![...field.options].some(o=>o.value===String(value)))field.add(new Option(value,value));field.value=value;
         }
-        product.Packages.slice(1).forEach(pack=>window.addRegistrationPackage(pack));
-        window.updateRegistrationPurchase();window.controlSetup.load(product);
+        window.loadControlUnit(product);
         const cancel=document.createElement('button');cancel.type='button';cancel.className='action secondary';cancel.textContent='Cancelar edição';cancel.onclick=()=>show(1);$('msg').before(cancel);
     }
     async function deleteProduct(id){
@@ -688,20 +608,9 @@
     });
     cadastrar=function(){save(async()=>{
         const code=$('code').value.trim(),name=$('nome').value.trim();let unit=$('un').value.trim();
-        const controlLevels=window.controlSetup.dirty||editingProduct?.ControlLevels?.length?window.controlSetup.read():null;
-        if(controlLevels)unit=controlLevels.at(-1).Name;
-        const minimum=Number($('min').value),factor=Number($('factor').value),emb=$('emb').value;
-        if(!code||!name||!unit||(!controlLevels&&(!Number.isInteger(minimum)||minimum<0||(emb&&(!Number.isInteger(factor)||factor<1)))))throw new Error('Preencha código, nome, unidade e quantidades válidas.');
-        const extraPackages=[...document.querySelectorAll('.extra-package-row')].map(row=>({...JSON.parse(row.dataset.original),Name:row.querySelector('.package-name').value.trim(),Factor:Number(row.querySelector('.package-factor').value)}));
-        if(!controlLevels&&(extraPackages.some(p=>!p.Name||!Number.isInteger(p.Factor)||p.Factor<1)||(!emb&&extraPackages.length)))throw new Error('Informe a embalagem principal e as conversões inteiras positivas.');
-        const convertedMinimum=minimum*(emb?factor:1);
-        const unitConversion=editingProduct&&unit!==editingProduct.Unit?Number($('unit-conversion').value):null;
-        if(unitConversion!==null&&(!Number.isInteger(unitConversion)||unitConversion<1))throw new Error('Informe quantas novas unidades existem em cada unidade antiga para converter o saldo.');
-        const p={...editingProduct,UnitConversionFactor:unitConversion,Code:code,Name:name,Unit:unit,Category:$('cat').value,MinimumPackageQuantity:emb?minimum:null,Minimum:convertedMinimum,Target:Math.max(convertedMinimum,editingProduct?.Target??convertedMinimum),Location:$('local').value.trim(),Active:true,Packages:emb?[{...editingProduct?.Packages[0],Name:emb,Factor:factor,Code:editingProduct?.Packages[0]?.Code||''},...extraPackages]:[]};
-        if(controlLevels){
-            p.ControlLevels=controlLevels;p.Unit=unit;p.Packages=controlLevels.slice(0,-1).map(level=>({Name:level.Name,Factor:level.Factor,Code:editingProduct?.Packages.find(pack=>pack.Name.toLocaleLowerCase('pt-BR')===level.Name.toLocaleLowerCase('pt-BR'))?.Code||''}));
-            p.MinimumPackageQuantity=null;p.Minimum=controlLevels.at(-1).Minimum*controlLevels.at(-1).Factor;p.Target=Math.max(p.Minimum,editingProduct?.Target??p.Minimum);
-        }else p.ControlLevels=[];
+        const minimum=Number($('min').value);
+        if(!code||!name||!unit||!$('min').value.trim()||!Number.isSafeInteger(minimum)||minimum<0)throw new Error('Preencha código, nome, medida e mínimo inteiro não negativo.');
+        const p={...editingProduct,Code:code,Name:name,Unit:unit,Category:$('cat').value,ControlLevels:[],MinimumPackageQuantity:null,Minimum:minimum,Target:Math.max(minimum,editingProduct?.Target??minimum),Location:$('local').value.trim(),Active:true,Packages:editingProduct?.Packages??[]};
         sync(await request('saveProduct',p));if(editingProduct){editingProduct=null;show(1);return;}lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('print-saved-label').hidden=false;$('msg').textContent='Produto cadastrado. Você já pode imprimir a etiqueta. Registre o saldo inicial em Entrada.';
     });};
     buscar=function(){
@@ -714,33 +623,60 @@
             $('link-existing-product').onclick=()=>openLinkCode(code);$('register-new-product').onclick=()=>{show(2);$('code').value=code;};return;
         }
         const base=inventory.Products.find(x=>x.Id===selected.id);
-        $('tipoemb').innerHTML=`<option value="1">${esc(selected.un)} (unidade de controle)</option>`+base.Packages.map(pk=>`<option value="${pk.Factor}">${esc(pk.Name)} — ${pk.Factor} ${esc(selected.un)}</option>`).join('');
-        if(current===4)$('tipoemb').querySelector('option').textContent=selected.un+' avulso (menor item controlado)';
-        const pack=base.Packages.findIndex(pk=>pk.Code&&pk.Code===code); if(pack>=0)$('tipoemb').selectedIndex=pack+1;
-        if(current===3) calcFinanceiro();
+        $('tipoemb').innerHTML=movementOptions(base);
+        const pack=base.Packages.findIndex(pk=>pk.Code&&pk.Code===code);if(pack>=0)$('tipoemb').selectedIndex=pack+1;
+        $('new-movement-package')?.remove();
+        const fields=newPackageFields();fields.id='new-movement-package';$('tipoemb').after(fields);
+        $('tipoemb').onchange=()=>{fields.hidden=$('tipoemb').value!=='new';calc();};
+        $('q').oninput=calc;
+        $('mixed-output')?.remove();
         if(current===4){
-            $('mixed-output')?.remove();
             const mixed=document.createElement('div');mixed.id='mixed-output';mixed.style.cssText='margin-top:12px';
             const add=document.createElement('button');add.type='button';add.className='action secondary';add.textContent='+ Combinar outra apresentação';
             add.onclick=()=>{
-                const row=document.createElement('div');row.className='output-part';row.style.cssText='display:flex;gap:8px;margin:10px 0';
-                const select=$('tipoemb').cloneNode(true);select.removeAttribute('id');select.setAttribute('aria-label','Apresentação adicional');
-                const input=document.createElement('input');input.type='text';input.inputMode='numeric';input.value='1';input.setAttribute('aria-label','Quantidade adicional');
-                const remove=document.createElement('button');remove.type='button';remove.className='label-action';remove.textContent='×';remove.setAttribute('aria-label','Remover apresentação');remove.onclick=()=>{row.remove();updateMixedOutput();};
-                row.append(select,input,remove);mixed.insertBefore(row,add);select.onchange=updateMixedOutput;input.oninput=updateMixedOutput;updateMixedOutput();
+                const row=document.createElement('div');row.className='output-part';row.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin:10px 0';
+                const select=document.createElement('select');select.innerHTML=movementOptions(base);select.setAttribute('aria-label','Apresentação adicional');
+                const input=document.createElement('input');input.className='part-quantity';input.type='text';input.inputMode='numeric';input.value='1';input.setAttribute('aria-label','Quantidade adicional');
+                const fields=newPackageFields();
+                const remove=document.createElement('button');remove.type='button';remove.className='label-action';remove.textContent='Remover';remove.onclick=()=>{row.remove();calc();};
+                row.append(select,input,remove,fields);mixed.insertBefore(row,add);select.onchange=()=>{fields.hidden=select.value!=='new';calc();};input.oninput=calc;calc();
             };
-            mixed.append(add);$('calc').after(mixed);$('q').addEventListener('input',updateMixedOutput);$('tipoemb').addEventListener('change',updateMixedOutput);
+            mixed.append(add);$('calc').after(mixed);
         }
         calc();
     };
+    function movementOptions(product){
+        return '<option value="1">'+esc(product.Unit)+' (medida do saldo)</option>'+product.Packages.map(pk=>'<option value="'+pk.Factor+'">'+esc(pk.Name)+' com '+pk.Factor+' '+esc(product.Unit)+'</option>').join('')+'<option value="new">Nova embalagem…</option>';
+    }
+    function newPackageFields(){
+        const fields=document.createElement('div');fields.className='movement-package-fields';fields.hidden=true;fields.style.cssText='width:100%;margin:8px 0';
+        fields.innerHTML='<label>Nome da embalagem<input class="movement-package-name" placeholder="Ex.: Fardo"></label><label>Quantidade de '+esc(selected.un)+' em cada embalagem<input class="movement-package-factor" type="text" inputmode="numeric" placeholder="Ex.: 12"></label><small>A embalagem será lembrada ao confirmar a movimentação.</small>';
+        fields.addEventListener('input',()=>calc());return fields;
+    }
+    function readPart(select,input,fields){
+        const part={PackageIndex:select.selectedIndex-1,Quantity:Number(input.value)};
+        if(select.value==='new'){part.PackageIndex=-1;part.NewPackage={Name:fields.querySelector('.movement-package-name').value.trim(),Factor:Number(fields.querySelector('.movement-package-factor').value)};}
+        return part;
+    }
     function outputParts(){
-        return [{PackageIndex:$('tipoemb').selectedIndex-1,Quantity:Number($('q').value)},...[...document.querySelectorAll('.output-part')].map(row=>({PackageIndex:row.querySelector('select').selectedIndex-1,Quantity:Number(row.querySelector('input').value)}))];
+        return [readPart($('tipoemb'),$('q'),$('new-movement-package')),...[...document.querySelectorAll('.output-part')].map(row=>readPart(row.querySelector('select'),row.querySelector('.part-quantity'),row.querySelector('.movement-package-fields')))];
     }
-    function updateMixedOutput(){
-        const p=inventory.Products.find(p=>p.Id===selected?.id);if(!p)return;
-        const total=outputParts().reduce((sum,part)=>sum+part.Quantity*(part.PackageIndex<0?1:p.Packages[part.PackageIndex].Factor),0);
-        $('calc').textContent=`Total da saída: ${total} ${p.Unit}.`;
+    function partFactor(part){
+        const p=inventory.Products.find(p=>p.Id===selected?.id);
+        return part.NewPackage?.Factor??(part.PackageIndex<0?1:p?.Packages[part.PackageIndex]?.Factor);
     }
+    function validPart(part){
+        const factor=partFactor(part);
+        return Number.isSafeInteger(part.Quantity)&&part.Quantity>=0&&Number.isSafeInteger(factor)&&factor>0&&(!part.NewPackage||!!part.NewPackage.Name);
+    }
+    calc=function(){
+        if(!selected||!$('new-movement-package'))return;
+        const parts=outputParts().filter(part=>part.Quantity!==0);
+        const total=parts.reduce((sum,part)=>sum+part.Quantity*partFactor(part),0);
+        const balance=selected.saldo+(current===3?total:-total);
+        $('calc').textContent=parts.length&&parts.every(validPart)&&Number.isSafeInteger(total)?'Total: '+total+' '+selected.un+'. Saldo após '+(current===3?'entrada':'retirada')+': '+balance+' '+selected.un+'.'+(balance<0?' Saldo insuficiente.':''):'Informe quantidade e conteúdo da embalagem para conferir o saldo.';
+        if(current===3)calcFinanceiro();
+    };
     function moneyInput(id){
         let value=$(id).value.trim();
         if(!value)return 0;
@@ -749,7 +685,7 @@
     }
     calcFinanceiro=function(){
         if(current!==3||!$('preco'))return;
-        const quantity=Number($('q').value),factor=Number($('tipoemb').value),total=moneyInput('preco')-moneyInput('desconto')+moneyInput('acrescimo'),units=quantity*factor;
+        const quantity=Number($('q').value),factor=$('new-movement-package')?partFactor(outputParts()[0]):1,total=moneyInput('preco')-moneyInput('desconto')+moneyInput('acrescimo'),units=quantity*factor;
         const price=moneyInput('preco'),discount=moneyInput('desconto');
         if($('discount-percent'))$('discount-percent').textContent=Number.isFinite(price)&&price>0&&Number.isFinite(discount)?(discount/price*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%':'—';
         const addition=moneyInput('acrescimo');
@@ -760,15 +696,13 @@
     };
     movimentar=function(){save(async()=>{
         if(!selected)throw new Error('Busque um produto antes de confirmar.');
-        const quantity=Number($('q').value),factor=Number($('tipoemb').value),person=$('pessoa').value.trim();
+        const quantity=Number($('q').value),factor=partFactor(outputParts()[0]),person=$('pessoa').value.trim();
         if(!Number.isInteger(quantity)||(current===3?quantity<=0:quantity<0)||!person)throw new Error('Informe uma quantidade inteira positiva e o responsável.');
         const p=inventory.Products.find(x=>x.Id===selected.id);
-        const m={ProductId:p.Id,Type:current===3?'Entrada':'Saída',Date:new Date().toISOString(),Quantity:quantity,Factor:factor,Person:person,Sector:current===3?'':$('setor').value.trim(),Note:'',Package:$('tipoemb').selectedOptions[0].textContent,ReferenceSource:p.ReferenceSource,ReferenceDate:p.ReferenceDate};
-        if(current===4){
-            const parts=outputParts();
-            if(parts.some(part=>!Number.isInteger(part.Quantity)||part.Quantity<0)||!parts.some(part=>part.Quantity>0))throw new Error('Informe quantidades inteiras positivas nas apresentações retiradas.');
-            m.Parts=parts.filter(part=>part.Quantity>0);
-        }
+        const m={ProductId:p.Id,Type:current===3?'Entrada':'Saída',Date:new Date().toISOString(),Quantity:quantity,Factor:Number.isFinite(factor)?factor:1,Person:person,Sector:current===3?'':$('setor').value.trim(),Note:'',Package:$('tipoemb').selectedOptions[0].textContent,ReferenceSource:p.ReferenceSource,ReferenceDate:p.ReferenceDate};
+        const parts=outputParts();
+        if(parts.some(part=>!Number.isSafeInteger(part.Quantity)||part.Quantity<0)||!parts.some(part=>part.Quantity>0)||parts.filter(part=>part.Quantity>0).some(part=>!validPart(part)))throw new Error('Informe quantidades inteiras positivas e o conteúdo de cada embalagem.');
+        m.Parts=parts.filter(part=>part.Quantity>0);
         if(current===3){
             const price=moneyInput('preco'),discount=moneyInput('desconto'),addition=moneyInput('acrescimo');
             const total=price-discount+addition;

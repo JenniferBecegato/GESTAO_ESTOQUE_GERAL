@@ -110,10 +110,6 @@ public partial class Form1 : Form
                     Commit(s =>
                     {
                         var old = s.Products.FirstOrDefault(p => p.Id == product.Id);
-                        if(old!=null&&old.Unit!=product.Unit){
-                            if(!payload.TryGetProperty("UnitConversionFactor",out var conversionValue)||!conversionValue.TryGetDecimal(out var conversion)||conversion<1||conversion!=decimal.Truncate(conversion))throw new ArgumentException("Informe a conversão entre a unidade antiga e a nova.");
-                            old.Balance=checked(old.Balance*conversion);old.AverageCost/=conversion;old.Unit=product.Unit;
-                        }
                         InventoryRules.Validate(product,s);
                         // Quantidades e custos só podem ser alterados por movimentações.
                         if(old != null) { product.Balance = old.Balance; product.AverageCost = old.AverageCost; }

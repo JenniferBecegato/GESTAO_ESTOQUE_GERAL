@@ -11,10 +11,20 @@ Abra `GESTAO_ESTOQUE_GERAL.slnx` no Visual Studio com suporte a .NET 10/desktop 
 O HTML é incorporado ao executável; não depende do arquivo em Downloads. O componente WebView2 Runtime da Microsoft precisa estar instalado (já encontrado neste computador).
 
 ## Uso
-1. Cadastre o produto e sua embalagem de compra.
-2. Registre o saldo inicial ou compra em Entrada; informe responsável e preço por embalagem. A conversão é aplicada ao saldo.
+1. Cadastre o produto, escolha **Controlar estoque em** (unidade, pacote, fardo, caixa ou outra medida) e informe o estoque mínimo nessa mesma medida. Escolha a menor medida que você retira, como rolo ou resma.
+2. Registre o saldo inicial ou compra em Entrada; informe responsável e valor total da compra. Escolha a medida do saldo, uma embalagem já salva ou **Nova embalagem**. Informe o nome e o conteúdo direto: por exemplo, cada fardo contém 12 rolos. Duas unidades desse fardo acrescentam 24 rolos ao saldo.
 3. Use Saída para registrar as retiradas; o sistema bloqueia quantidade acima do saldo.
 4. Consulte o histórico e os sete relatórios com os mesmos menus do protótipo.
+
+### Embalagens na Entrada / Retirada
+
+A embalagem é lembrada somente ao confirmar uma movimentação válida. Sair da tela ou receber um erro não salva embalagens nem altera o saldo. O sistema reutiliza nome e conteúdo iguais; caixas com 12 e com 24 itens aparecem separadamente. A retirada também permite combinar apresentações, por exemplo, uma caixa mais duas unidades avulsas. Confira o total convertido e o saldo resultante antes de confirmar.
+
+Saldo e mínimo são exibidos na medida do produto. O sistema não conta separadamente embalagens fechadas ou abertas. Cada movimentação nova preserva o nome, a quantidade e o fator utilizados em suas partes, mesmo se a configuração mudar depois.
+
+Cadastros existentes mantêm saldo, medida, mínimo efetivo, embalagens e códigos. Ao editar, o formulário apresenta um único mínimo nessa medida. Trocar a medida altera apenas a identificação da medida no cadastro: a quantidade em estoque, o custo médio e as quantidades das embalagens permanecem iguais, sem solicitar conversão. O histórico anterior é preservado.
+
+As opções de etiqueta identificam nome e conteúdo, como **Caixa com 12 rolos** e **Caixa com 24 rolos**. Etiquetas geradas usam o código do produto; selecione a apresentação na movimentação. Códigos específicos de embalagens já existentes continuam reconhecidos. As quantidades sugeridas de etiquetas podem ser alteradas antes da impressão.
 
 Clique com o botão direito na interface para exportar CSV para Excel, imprimir/salvar PDF ou abrir as ferramentas de gestão. F2 também abre essas ferramentas, que preservam os recursos adicionais da primeira versão: edição/inativação, múltiplas embalagens e códigos, compras com vários itens, saldo inicial de custo desconhecido, ajustes e etiquetas.
 
@@ -64,12 +74,12 @@ Quando o código digitado ou lido não existir, Entrada e Saída oferecem Vincul
 
 O novo código e o antigo passam a identificar o mesmo cadastro. O saldo e o histórico não são alterados pelo vínculo; a entrada/saída ainda exige confirmação. A associação é preservada no SQLite e continua funcionando depois de fechar e abrir o sistema. Um código não pode pertencer a dois produtos nem colidir com um código de embalagem. Códigos alternativos também funcionam na busca da lista de produtos e nas ferramentas de gestão.
 
-O vínculo simples identifica uma unidade de controle. Para códigos que identificam caixas/fardos, cadastre uma embalagem com seu fator de conversão. Apresentações diferentes (por exemplo, café 500 g e 1 kg) devem ser diferenciadas. Lote não é usado para adivinhar o produto: a associação de um código novo depende da escolha da pessoa.
+O vínculo simples identifica o produto. Para movimentar caixas/fardos, selecione uma embalagem salva ou informe uma nova na movimentação. Códigos específicos de embalagens existentes continuam selecionando a apresentação correspondente. Apresentações diferentes (por exemplo, café 500 g e 1 kg) devem ser diferenciadas. Lote não é usado para adivinhar o produto: a associação de um código novo depende da escolha da pessoa.
 
 ## Etiquetas por embalagem ou por produto avulso
-Na prévia, escolha Onde a etiqueta será colocada. Ao abrir a partir de uma entrada em embalagem, o sistema sugere etiquetas para a quantidade de embalagens recebidas: 5 pacotes com 3 unidades geram 5 etiquetas iguais de pacote, enquanto o saldo recebe 15 unidades. Cada embalagem usa um código próprio, persistido no cadastro, com seu fator de conversão. Bipa-se 1 pacote para movimentar 3 unidades. Não são gerados números sequenciais por pacote: pacotes equivalentes reutilizam o mesmo código.
+Na prévia, escolha Onde a etiqueta será colocada. A última entrada sugere a quantidade de embalagens recebidas: 5 pacotes com 3 unidades geram 5 etiquetas iguais de pacote, enquanto o saldo recebe 15 unidades. As etiquetas usam o código do produto; ao bipar, selecione a apresentação e a quantidade na movimentação. Não são gerados números sequenciais por pacote.
 
-A opção Em cada produto avulso usa o código da unidade e gera 15 etiquetas nesse exemplo. Cada leitura avulsa representa uma unidade. O código do pacote é diferente do código avulso, para evitar confundir fatores. A etiqueta da embalagem identifica o nome e o conteúdo (ex.: Pacote c/ 3). Gerar ou reimprimir códigos não altera o saldo nem registra movimentações. Para usar esse controle, cadastre unidade de controle = unidade e embalagem = pacote com fator 3; se a unidade de controle já for pacote, esse pacote já é a unidade individual do estoque.
+A opção Em cada produto avulso gera 15 etiquetas nesse exemplo. A etiqueta da embalagem identifica o nome e o conteúdo (ex.: Pacote c/ 3 unidades). Gerar ou reimprimir etiquetas não altera o saldo nem registra movimentações. Para usar esse controle, escolha unidade no cadastro e informe o pacote com 3 unidades na Entrada / Retirada; se a medida de controle já for pacote, esse pacote já é o item individual do estoque.
 
 ## Filtros do histórico de compras por local
 O quadro Histórico de compras por local possui filtros próprios de data inicial/final da compra, local e produto/código. A busca inclui os códigos alternativos e de embalagem. Limpar filtros restaura a lista completa. O total conhecido e o número de itens acompanham a seleção; entradas sem custo permanecem identificadas. O PDF preserva as linhas filtradas e mostra os critérios aplicados nesse quadro. Os filtros das movimentações permanecem independentes.
