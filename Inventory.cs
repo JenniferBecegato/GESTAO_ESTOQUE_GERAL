@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace GESTAO_ESTOQUE_GERAL;
@@ -9,6 +9,13 @@ public sealed class Package
     public string Code { get; set; } = "";
     public decimal Factor { get; set; } = 1;
 }
+public sealed class ControlLevel
+{
+    public string Kind { get; set; } = "unit";
+    public string Name { get; set; } = "unidade";
+    public decimal Factor { get; set; } = 1;
+    public decimal Minimum { get; set; }
+}
 public sealed class Product
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -18,19 +25,30 @@ public sealed class Product
     public string Category { get; set; } = "Outros";
     public string Unit { get; set; } = "unidade";
     public string Location { get; set; } = "";
+    public List<ControlLevel> ControlLevels { get; set; } = [];
+    public decimal? MinimumPackageQuantity { get; set; }
     public decimal Minimum { get; set; }
     public decimal Target { get; set; }
     public decimal Balance { get; set; }
     public decimal? AverageCost { get; set; }
+    public decimal PurchaseQuantity { get; set; } = 1;
+    public decimal? PurchaseTotal { get; set; }
+    public decimal? PurchaseUnitCost { get; set; }
     public decimal? Reference { get; set; }
     public string ReferenceSource { get; set; } = "";
     public DateTime ReferenceDate { get; set; } = DateTime.Today;
     public bool Active { get; set; } = true;
     public List<Package> Packages { get; set; } = [];
 }
+public sealed class MovementPart
+{
+    public int PackageIndex { get; set; } = -1;
+    public decimal Quantity { get; set; }
+}
 public sealed class Movement
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public List<MovementPart> Parts { get; set; } = [];
     public Guid PurchaseId { get; set; }
     public Guid ProductId { get; set; }
     public string ProductName { get; set; } = "";
@@ -95,7 +113,9 @@ public sealed class InventoryStore : IDisposable
             int result = sqlite3_step(stmt);
             if (result == 101) return new Inventory();
             if (result != 100) throw new IOException("Falha ao ler o estoque.");
-            return JsonSerializer.Deserialize<Inventory>(Marshal.PtrToStringUTF8(sqlite3_column_text(stmt, 0))!) ?? throw new IOException("Banco de dados inválido.");
+            var loaded=JsonSerializer.Deserialize<Inventory>(Marshal.PtrToStringUTF8(sqlite3_column_text(stmt, 0))!) ?? throw new IOException("Banco de dados inválido.");
+            foreach(var product in loaded.Products)if(product.ControlLevels.Count>0){product.MinimumPackageQuantity=null;product.Minimum=checked(product.ControlLevels[^1].Minimum*product.ControlLevels[^1].Factor);product.Target=Math.Max(product.Target,product.Minimum);}
+            return loaded;
         }
         finally { sqlite3_finalize(stmt); }
     }
@@ -113,7 +133,20 @@ public static class InventoryRules
     public static void Validate(Product p, Inventory state)
     {
         if (string.IsNullOrWhiteSpace(p.Code) || string.IsNullOrWhiteSpace(p.Name) || string.IsNullOrWhiteSpace(p.Unit)) throw new ArgumentException("Informe código, nome e unidade de controle.");
+        if(p.ControlLevels.Count>0){
+            if(p.ControlLevels.Count>3||p.ControlLevels.Select(l=>l.Kind).Distinct().Count()!=p.ControlLevels.Count||p.ControlLevels.Any(l=>string.IsNullOrWhiteSpace(l.Name)||l.Factor<1||l.Factor!=decimal.Truncate(l.Factor)||l.Minimum<0||l.Minimum!=decimal.Truncate(l.Minimum)||!new[]{"upper","package","unit"}.Contains(l.Kind)))throw new ArgumentException("Níveis de controle inválidos.");
+            var baseLevel=p.ControlLevels[^1];
+            if(baseLevel.Factor!=1||baseLevel.Name!=p.Unit||p.Packages.Count!=p.ControlLevels.Count-1)throw new ArgumentException("A unidade de controle deve corresponder ao menor nível cadastrado.");
+            for(int i=0;i<p.ControlLevels.Count-1;i++)if(p.ControlLevels[i].Factor<p.ControlLevels[i+1].Factor||p.ControlLevels[i].Factor%p.ControlLevels[i+1].Factor!=0||p.Packages[i].Name!=p.ControlLevels[i].Name||p.Packages[i].Factor!=p.ControlLevels[i].Factor)throw new ArgumentException("Conversões entre níveis incompatíveis.");
+            p.MinimumPackageQuantity=null;p.Minimum=checked(p.ControlLevels[^1].Minimum*p.ControlLevels[^1].Factor);p.Target=Math.Max(p.Target,p.Minimum);
+        }
+        if(p.MinimumPackageQuantity is decimal minimumPackages){
+            if(minimumPackages<0||minimumPackages!=decimal.Truncate(minimumPackages)||p.Packages.Count==0)throw new ArgumentException("Informe o estoque mínimo inteiro na embalagem de compra.");
+            p.Minimum=checked(minimumPackages*p.Packages[0].Factor);
+            p.Target=Math.Max(p.Target,p.Minimum);
+        }
         if (p.Minimum < 0 || p.Target < p.Minimum) throw new ArgumentException("O estoque desejado deve ser igual ou maior que o mínimo.");
+        if(p.PurchaseQuantity<=0||p.PurchaseQuantity!=decimal.Truncate(p.PurchaseQuantity)||p.PurchaseTotal<0)throw new ArgumentException("Informe quantidade comprada inteira positiva e valor total não negativo.");
         var codes = new List<string> { p.Code };
         if(p.CodeAliases.Any(c=>string.IsNullOrWhiteSpace(c)||c.Length>128||c.Any(char.IsControl)))throw new ArgumentException("Código alternativo inválido.");
         codes.AddRange(p.CodeAliases);
@@ -125,6 +158,7 @@ public static class InventoryRules
         if (codes.Distinct(StringComparer.OrdinalIgnoreCase).Count() != codes.Count) throw new ArgumentException("Os códigos das unidades e embalagens devem ser diferentes.");
         var other = state.Products.Where(x => x.Id != p.Id).SelectMany(x => new[] { x.Code }.Concat(x.CodeAliases).Concat(x.Packages.Select(y => y.Code))).Where(x => x.Length > 0);
         if (other.Any(x => codes.Contains(x, StringComparer.OrdinalIgnoreCase))) throw new ArgumentException("Um dos códigos já pertence a outro produto ou embalagem.");
+        p.PurchaseUnitCost=p.PurchaseTotal/(p.PurchaseQuantity*(p.Packages.FirstOrDefault()?.Factor??1));
         var old = state.Products.FirstOrDefault(x => x.Id == p.Id);
         if (old != null && old.Unit != p.Unit && state.Movements.Any(x => x.ProductId == p.Id)) throw new ArgumentException("A unidade de um produto movimentado não pode ser alterada.");
     }
@@ -140,6 +174,16 @@ public static class InventoryRules
     {
         var p = state.Products.Single(x => x.Id == m.ProductId);
         if (!p.Active) throw new ArgumentException("O produto está inativo.");
+        if(m.Parts.Count>0){
+            if(m.Type!="Saída")throw new ArgumentException("Combinação de apresentações disponível apenas na saída.");
+            decimal total=0;var descriptions=new List<string>();
+            foreach(var part in m.Parts){
+                if(part.Quantity<=0||part.Quantity!=decimal.Truncate(part.Quantity)||part.PackageIndex< -1||part.PackageIndex>=p.Packages.Count)throw new ArgumentException("Apresentação ou quantidade inválida.");
+                var pack=part.PackageIndex<0?null:p.Packages[part.PackageIndex];
+                total=checked(total+part.Quantity*(pack?.Factor??1));descriptions.Add(part.Quantity+" "+(pack?.Name??p.Unit));
+            }
+            m.Quantity=total;m.Factor=1;m.Package=string.Join(" + ",descriptions);
+        }
         if (m.Quantity <= 0 || m.Quantity != decimal.Truncate(m.Quantity) || m.Factor <= 0 || string.IsNullOrWhiteSpace(m.Person)) throw new ArgumentException("Informe quantidade inteira positiva e responsável.");
         m.Converted = checked(m.Quantity * m.Factor);
         if (m.Type != "Entrada" && m.Converted > p.Balance) throw new ArgumentException("A quantidade supera o saldo disponível.");

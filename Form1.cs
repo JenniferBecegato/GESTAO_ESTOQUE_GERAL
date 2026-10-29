@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
 
@@ -29,7 +29,6 @@ public partial class Form1 : Form
         StartPosition = FormStartPosition.CenterScreen;
         Controls.Add(Browser);
         KeyPreview = true;
-        KeyDown += (_,e) => { if(e.KeyCode == Keys.F2) { e.Handled = true; Advanced(); } };
         Shown += async (_,_) => await InitializeBrowser();
         FormClosed += (_,_) => { Browser.Dispose(); store.Dispose(); };
     }
@@ -43,10 +42,10 @@ public partial class Form1 : Form
         try
         {
             string profile = Path.Combine(Path.GetDirectoryName(databasePath ?? InventoryStore.DataPath)!, "InterfaceWebView2");
-            var environment = await CoreWebView2Environment.CreateAsync(null,profile);
+            var environment = await CoreWebView2Environment.CreateAsync(null,profile,new CoreWebView2EnvironmentOptions { Language="pt-BR" });
             await Browser.EnsureCoreWebView2Async(environment);
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             Browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
             Browser.CoreWebView2.Settings.IsZoomControlEnabled = false;
             Browser.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
@@ -97,20 +96,25 @@ public partial class Form1 : Form
                     Reply(id,new { id=labelProduct.Id,code=labelProduct.Code,name=labelProduct.Name,unit=labelProduct.Unit,location=labelProduct.Location,svg=BarcodeService.Svg(labelProduct.Code) }); break;
                 case "packageBarcode":
                     Guid packageProductId=payload.GetProperty("productId").GetGuid();int packageIndex=payload.GetProperty("packageIndex").GetInt32();
+                    var packageProduct=state.Products.Single(x=>x.Id==packageProductId);if(packageIndex<0||packageIndex>=packageProduct.Packages.Count)throw new ArgumentException("Embalagem não encontrada.");var labelPackage=packageProduct.Packages[packageIndex];
+                    Reply(id,new { inventory=state,code=packageProduct.Code,name=packageProduct.Name,unit=labelPackage.Name+" com "+labelPackage.Factor.ToString("0.##")+" "+packageProduct.Unit,location=packageProduct.Location,svg=BarcodeService.Svg(packageProduct.Code) });break;
+                case "deleteProduct":
+                    var deleteId=payload.GetGuid();
                     Commit(s=>{
-                        var p=s.Products.Single(x=>x.Id==packageProductId);
-                        if(packageIndex<0||packageIndex>=p.Packages.Count)throw new ArgumentException("Embalagem não encontrada.");
-                        if(string.IsNullOrWhiteSpace(p.Packages[packageIndex].Code))p.Packages[packageIndex].Code=BarcodeService.Generate(s);
-                        InventoryRules.Validate(p,s);
+                        var removed=s.Products.SingleOrDefault(p=>p.Id==deleteId)??throw new ArgumentException("Produto não encontrado.");
+                        s.Products.Remove(removed);
                     });
-                    var packageProduct=state.Products.Single(x=>x.Id==packageProductId);var labelPackage=packageProduct.Packages[packageIndex];
-                    Reply(id,new { inventory=state,code=labelPackage.Code,name=packageProduct.Name,unit=labelPackage.Name+" com "+labelPackage.Factor.ToString("0.##")+" "+packageProduct.Unit,location=packageProduct.Location,svg=BarcodeService.Svg(labelPackage.Code) });break;
+                    Reply(id,state);break;
                 case "saveProduct":
                     var product = payload.Deserialize<Product>(json) ?? throw new ArgumentException("Produto inválido.");
                     Commit(s =>
                     {
-                        InventoryRules.Validate(product,s);
                         var old = s.Products.FirstOrDefault(p => p.Id == product.Id);
+                        if(old!=null&&old.Unit!=product.Unit){
+                            if(!payload.TryGetProperty("UnitConversionFactor",out var conversionValue)||!conversionValue.TryGetDecimal(out var conversion)||conversion<1||conversion!=decimal.Truncate(conversion))throw new ArgumentException("Informe a conversão entre a unidade antiga e a nova.");
+                            old.Balance=checked(old.Balance*conversion);old.AverageCost/=conversion;old.Unit=product.Unit;
+                        }
+                        InventoryRules.Validate(product,s);
                         // Quantidades e custos só podem ser alterados por movimentações.
                         if(old != null) { product.Balance = old.Balance; product.AverageCost = old.AverageCost; }
                         else { product.Balance = 0; product.AverageCost = null; }
@@ -137,13 +141,14 @@ public partial class Form1 : Form
                     {
                         bool labels=payload.ValueKind==JsonValueKind.Object&&payload.TryGetProperty("labels",out var labelFlag)&&labelFlag.GetBoolean();
                         using var save=new SaveFileDialog { Filter="Documento PDF (*.pdf)|*.pdf",DefaultExt="pdf",AddExtension=true,FileName=(labels?"Etiquetas_":"Relatorio_Estoque_")+DateTime.Now.ToString("yyyyMMdd_HHmm")+".pdf" };
-                        if(save.ShowDialog(this)==DialogResult.OK)
+                        bool pdfSaved=save.ShowDialog(this)==DialogResult.OK;
+                        if(pdfSaved)
                         {
                             await ExportPdf(save.FileName,labels,labels?payload.GetProperty("width").GetDouble():0,labels?payload.GetProperty("height").GetDouble():0,false);
                             try { Process.Start(new ProcessStartInfo(save.FileName){UseShellExecute=true}); }
                             catch { MessageBox.Show(this,"PDF salvo em:\n"+save.FileName,"PDF gerado"); }
                         }
-                        Reply(id,true);
+                        Reply(id,pdfSaved);
                     }
                     finally { exportingPdf=false; }
                     break;
