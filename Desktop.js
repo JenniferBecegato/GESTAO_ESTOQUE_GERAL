@@ -13,6 +13,48 @@
     const purchaseHistoryFilters={start:'',end:'',product:'',store:''};
     const $ = id => document.getElementById(id);
     const localDate = d => new Date(d).toLocaleDateString('sv-SE');
+    function monthlySpendingComparison(movements,now=new Date()){
+        const y=now.getFullYear(),m=now.getMonth();
+        const start=localDate(new Date(y,m,1)),end=localDate(new Date(y,m+1,0));
+        const previousStart=localDate(new Date(y,m-1,1));
+        const previousEnd=localDate(new Date(y,m,0));
+        function total(from,to){
+            const rows=movements.filter(x=>x.Type==='Entrada'&&x.PurchaseDate.slice(0,10)>=from&&x.PurchaseDate.slice(0,10)<=to);
+            return {value:rows.reduce((n,x)=>n+(x.Total??0),0),unknown:rows.filter(x=>x.Total==null).length};
+        }
+        const current=total(start,end),previous=total(previousStart,previousEnd),difference=current.value-previous.value;
+        return {start,end,previousStart,previousEnd,current,previous,difference,percent:previous.value===0?null:difference/previous.value*100};
+    }
+
+    function spendingComparisonMarkup(chart=false){
+        const now=new Date(),c=monthlySpendingComparison(inventory.Movements,now);
+        const monthName=date=>{const name=date.toLocaleDateString('pt-BR',{month:'long'});return name.charAt(0).toUpperCase()+name.slice(1);};
+        const currentMonth=monthName(now),previousMonth=monthName(new Date(now.getFullYear(),now.getMonth()-1,1));
+        const direction=c.difference>0?'Aumento':c.difference<0?'Redução':'Sem alteração';
+        const percent=c.percent===null?'Sem base percentual no mês anterior':Math.abs(c.percent).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%';
+        return '<h2 style="font-size:16px;font-weight:400;margin:0 0 10px">Comparação com o mês anterior</h2><strong style="display:block;font-size:20px">'+esc(direction+': '+referenceMoney(Math.abs(c.difference))+' • '+percent)+'</strong><p class="muted small">'+esc(currentMonth+': '+referenceMoney(c.current.value)+' • '+previousMonth+': '+referenceMoney(c.previous.value))+'</p>'+(chart?barras([[currentMonth,c.current.value],[previousMonth,c.previous.value]]):'');
+    }
+    function addSpendingComparison(container,chart=false){
+        if(!container)return;
+        const panel=document.createElement('div');
+        panel.className=(chart?'panel':'card')+' monthly-comparison financial-info-card';
+        function draw(){
+            panel.innerHTML=spendingComparisonMarkup(chart);
+            const c=monthlySpendingComparison(inventory.Movements);
+            const missing=c.current.unknown+c.previous.unknown;
+            const explanation='A comparação considera todas as compras registradas no mês atual e todas as compras do mês anterior, do primeiro ao último dia de cada mês, sem limitar pelo dia atual. Os valores seguem a data da compra. A diferença em reais é o gasto atual menos o anterior; o percentual usa o gasto anterior como base. '+(c.percent===null?'Sem gasto no período anterior, não há base para calcular o percentual. ':'')+(missing?'Totais parciais: '+missing+' compra(s) sem custo informado.':'');
+            adicionaAjuda(panel,explanation);
+            panel.querySelector('.info-btn').setAttribute('aria-label','Informações da comparação mensal');
+        }
+        draw();
+        container.append(panel);
+        let date=localDate(new Date());
+        const timer=setInterval(()=>{
+            if(!panel.isConnected){clearInterval(timer);return;}
+            const today=localDate(new Date());
+            if(today!==date){date=today;draw();}
+        },60000);
+    }
     function request(type,payload) {
         return new Promise((resolve,reject) => {
             const id = String(++sequence);
@@ -395,7 +437,7 @@
             const summaryFor=tab=>{const summary=document.createElement('div');summary.className='pdf-filter-summary';summary.textContent=`Relatório: ${tab}\nPeríodo: ${date(inicioRel)} a ${date(fimRel)}    •    Local: ${localRel||'Todos os locais'}    •    Categoria: ${categoriaRel||'Todas as categorias'}`;return summary;};
             const previous=abaRel,main=document.querySelector('main'),scrollY=main.scrollTop,root=document.createElement('div');root.id='all-reports-pdf';
             try{
-                for(const tab of ['Resumo','Gastos','Economia','Consumo','Estoque','Preços','Locais de compra']){
+                for(const tab of ['Resumo','Gastos','Consumo','Estoque','Preços','Locais de compra','Comparação mensal']){
                     abaRel=tab;desenhaRelatorio();
                     const section=document.createElement('section');section.className='pdf-report-section';section.dataset.report=tab;
                     const brand=document.querySelector('.bar').cloneNode(true);brand.querySelector('.badge-top')?.remove();
@@ -450,7 +492,6 @@
                 financial.querySelector('h2').textContent='Resumo financeiro';
                 const explanations=[
                     ['Gasto nas compras','Soma dos valores pagos nas compras do mês e ano selecionados, pela data da compra. Compras sem custo informado não entram na soma e são indicadas na observação abaixo.'],
-                    ['Economia comparada à referência','Compara o valor de referência com o valor pago, para a mesma quantidade e unidade: referência total menos valor pago. Só entram compras com referência e custo informados. Resultado positivo indica economia; negativo indica custo adicional. A referência por unidade deve corresponder à unidade de controle do produto.'],
                     ['Local com maior gasto','Estabelecimento em que foi gasto o maior valor em compras no mês e ano selecionados. Considera apenas compras com custo informado. É o local da compra, não o local onde o produto é armazenado.']
                 ];
                 financial.querySelectorAll('.card').forEach((card,i)=>{
@@ -468,15 +509,15 @@
                     if(!period.value||!period.validity.valid)return;
                     const [year,month]=period.value.split('-').map(Number);financeMonth=month;financeYear=year;
                     const key=financeYear+'-'+String(financeMonth).padStart(2,'0'),items=compras.filter(c=>c.data.startsWith(key));
-                    const refs=items.filter(c=>c.ref!==null&&c.valor!==null),totals={};
+                    const totals={};
                     items.forEach(c=>{if(c.valor!==null)totals[c.local]=(totals[c.local]||0)+c.valor;});
-                    const top=Object.entries(totals).sort((a,b)=>b[1]-a[1])[0],cards=financial.querySelectorAll('.card b');
+                    const top=Object.entries(totals).sort((a,b)=>b[1]-a[1])[0],cards=financial.querySelectorAll('.card:not(.monthly-comparison) b');
                     cards[0].textContent=referenceMoney(items.reduce((sum,c)=>sum+(c.valor??0),0));
-                    cards[1].textContent=refs.length?referenceMoney(refs.reduce((sum,c)=>sum+c.ref-c.valor,0)):'Não calculada';
-                    cards[2].textContent=top?.[0]||'Sem dados';cards[2].title=top?referenceMoney(top[1]):'Nenhuma compra com valor informado neste período';
-                    financial.querySelector('p.muted').textContent=`Período: ${months[financeMonth-1]} de ${financeYear} (data da compra). ${items.length} item(ns) de compra; ${items.filter(c=>c.unknown).length} sem custo conhecido. Economia calculada em ${refs.length} de ${items.length} itens com referência. Valores negativos indicam custo adicional.`;
+                    cards[1].textContent=top?.[0]||'Sem dados';cards[1].title=top?referenceMoney(top[1]):'Nenhuma compra com valor informado neste período';
+                    financial.querySelector(':scope > p.muted').textContent=`Período: ${months[financeMonth-1]} de ${financeYear} (data da compra). ${items.length} item(ns) de compra; ${items.filter(c=>c.unknown).length} sem custo conhecido.`;
                 }
                 $('finance-period').onchange=updateFinance;updateFinance();
+                addSpendingComparison(financial.querySelector('.grid'));
             }
         }
         if(current===2) {
@@ -568,7 +609,7 @@
                 return (!f.start||m.PurchaseDate.slice(0,10)>=f.start)&&(!f.end||m.PurchaseDate.slice(0,10)<=f.end)&&(!f.store||(m.Store||'Não informado')===f.store)&&search.toLocaleLowerCase('pt-BR').includes(query);
             }).sort((a,b)=>b.PurchaseDate.localeCompare(a.PurchaseDate)||b.Date.localeCompare(a.Date));
             const table=document.createElement('table');table.id='purchases-history-table';
-            table.innerHTML='<thead><tr><th>Data</th><th>Produto</th><th>Local da compra</th><th>Quantidade</th><th>Valor</th><th>Economia</th></tr></thead><tbody>'+rows.map(m=>`<tr><td>${esc(m.PurchaseDate.slice(0,10).split('-').reverse().join('/'))}</td><td>${esc(m.ProductName)}</td><td>${esc(m.Store||'Não informado')}</td><td>${m.Converted} ${esc(m.Unit)}</td><td>${m.Total===null?'Custo desconhecido':referenceMoney(m.Total)}</td><td>${m.Total===null||m.ReferenceTotal===null?'Não calculada':referenceMoney(m.ReferenceTotal-m.Total)}</td></tr>`).join('')+(rows.length?'':'<tr><td colspan="6">Nenhuma compra encontrada para os filtros selecionados.</td></tr>')+'</tbody>';
+            table.innerHTML='<thead><tr><th>Data</th><th>Produto</th><th>Local da compra</th><th>Quantidade</th><th>Valor</th></tr></thead><tbody>'+rows.map(m=>`<tr><td>${esc(m.PurchaseDate.slice(0,10).split('-').reverse().join('/'))}</td><td>${esc(m.ProductName)}</td><td>${esc(m.Store||'Não informado')}</td><td>${m.Converted} ${esc(m.Unit)}</td><td>${m.Total===null?'Custo desconhecido':referenceMoney(m.Total)}</td></tr>`).join('')+(rows.length?'':'<tr><td colspan="5">Nenhuma compra encontrada para os filtros selecionados.</td></tr>')+'</tbody>';
             panel.querySelector('table').replaceWith(table);
             note.textContent=invalid?'A data inicial deve ser anterior ou igual à data final.':`${rows.length} item(ns) de compra • Total conhecido: ${referenceMoney(rows.reduce((sum,m)=>sum+(m.Total??0),0))}. Filtro pela data da compra.`;
             note.style.color=invalid?'#a33232':'';
@@ -756,6 +797,7 @@
     });};
     desenhaRelatorio=function(){
         referenceReports();
+        if(abaRel==='Comparação mensal')addSpendingComparison($('relconteudo'),true);
         dataNotice(document.querySelector('#page > .notice'),'Os relatórios utilizam os dados salvos no computador. Selecione o período, o local e a categoria para consultar.');
         const filterNote=document.querySelector('#page .section-note');if(filterNote)filterNote.textContent='Datas filtram compras e saídas. Categoria também filtra o estoque atual. O local filtra somente compras, pois não é atributo das saídas nem do saldo. Estoque é uma posição atual.';
         const replacements=[['Saldo atual ao custo ilustrativo','Saldo atual ao custo médio'],['Registros de exemplo','Itens registrados'],['Valores ilustrativos das saídas.','Custo médio registrado em cada saída.'],['Posição ilustrativa, não é filtrada por data ou local de compra.','Posição atual, não é filtrada por data ou local de compra.']];
@@ -772,7 +814,7 @@
             const cells=[...row.cells];
             if(abaRel==='Estoque'&&cells.length===7){const p=estoqueDemo.find(p=>p.nome===cells[0].textContent);if(p?.custo===null&&row.closest('.panel')?.querySelector('h2')?.textContent.startsWith('Posição atual')){cells[3].textContent='Desconhecido';cells[4].textContent=p.q===0?referenceMoney(0):'Desconhecido';}}
             if(abaRel==='Consumo'&&cells.length===6){const m=saidasDemo.find(m=>m.nome===cells[1].textContent&&m.data===cells[0].textContent);if(m?.custo===null)cells[5].textContent='Desconhecido';}
-            if(['Gastos','Economia','Locais de compra'].includes(abaRel)&&cells.length===7){const m=visiblePurchases.find(m=>m.data===cells[0].textContent&&m.nome===cells[1].textContent&&m.local===cells[2].textContent);if(m?.unknown)cells[4].textContent='Desconhecido';}
+            if(['Gastos','Locais de compra'].includes(abaRel)&&cells.length===5){const m=visiblePurchases.find(m=>m.data===cells[0].textContent&&m.nome===cells[1].textContent&&m.local===cells[2].textContent);if(m?.unknown)cells[4].textContent='Desconhecido';}
             if(abaRel==='Preços'&&cells.length===6){const m=visiblePurchases.find(m=>m.data===cells[0].textContent&&m.nome===cells[1].textContent&&m.local===cells[2].textContent);if(m?.unknown){cells[4].textContent='Desconhecido';cells[5].textContent='Desconhecido';}}
         }
     };

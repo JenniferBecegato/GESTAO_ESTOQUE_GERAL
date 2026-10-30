@@ -186,11 +186,11 @@ internal static class SelfTest
                     if(i==2)await Capture("cadastro");
                 }
                 await Script("show(6)");
-                foreach(string tab in new[]{"Resumo","Gastos","Economia","Consumo","Estoque","Preços","Locais de compra"})
+                foreach(string tab in new[]{"Resumo","Gastos","Consumo","Estoque","Preços","Locais de compra","Comparação mensal"})
                 {
                     await Script("selecionaAba("+JsonSerializer.Serialize(tab)+")");
                     Check(await Script("document.querySelectorAll('.report-tabs button').length===7 && document.querySelector('#relconteudo').children.length>0")=="true","Aba de relatório: "+tab);
-                    await Capture("relatorio-"+Array.IndexOf(new[]{"Resumo","Gastos","Economia","Consumo","Estoque","Preços","Locais de compra"},tab));
+                    await Capture("relatorio-"+Array.IndexOf(new[]{"Resumo","Gastos","Consumo","Estoque","Preços","Locais de compra","Comparação mensal"},tab));
                     string pdfPath=Path.Combine(directory,"relatorio-"+tab.Replace(' ','_')+".pdf");
                     await form.ExportPdf(pdfPath);
                     Check(File.Exists(pdfPath)&&new FileInfo(pdfPath).Length>1000,"PDF gerado diretamente: "+tab);
