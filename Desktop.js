@@ -204,7 +204,7 @@
         $('min').type='text';$('min').inputMode='numeric';
         const definitions=[
             [['code','Código de barras ou código interno'],['nome','Nome do produto'],['cat','Categoria'],['un','Controlar estoque em']],
-            [['min','Estoque mínimo'],['local','Local de armazenamento']]
+            [['min','Estoque mínimo']]
         ];
         for(const fields of definitions){
             const column=document.createElement('div');column.className='form-column';
@@ -449,7 +449,7 @@
             if(financial) {
                 financial.querySelector('h2').textContent='Resumo financeiro';
                 const explanations=[
-                    ['Gasto nas compras','Soma dos valores pagos nas compras do mês e ano selecionados, pela data da compra. Considera os descontos e acréscimos registrados em cada item. Compras sem custo informado não entram na soma e são indicadas na observação abaixo.'],
+                    ['Gasto nas compras','Soma dos valores pagos nas compras do mês e ano selecionados, pela data da compra. Compras sem custo informado não entram na soma e são indicadas na observação abaixo.'],
                     ['Economia comparada à referência','Compara o valor de referência com o valor pago, para a mesma quantidade e unidade: referência total menos valor pago. Só entram compras com referência e custo informados. Resultado positivo indica economia; negativo indica custo adicional. A referência por unidade deve corresponder à unidade de controle do produto.'],
                     ['Local com maior gasto','Estabelecimento em que foi gasto o maior valor em compras no mês e ano selecionados. Considera apenas compras com custo informado. É o local da compra, não o local onde o produto é armazenado.']
                 ];
@@ -496,24 +496,17 @@
                 quantityLabel.before(unitLabel,$('tipoemb'));
             }
             if(current===3) {
-                for(const key of ['setor','obs','ref']){const field=$(key);field.previousElementSibling?.remove();field.remove();}
+                for(const key of ['obs','ref']){const field=$(key);field.previousElementSibling?.remove();field.remove();}
                 $('preco').previousElementSibling.textContent='Valor total da compra (R$)';
-                for(const key of ['q','preco','desconto','acrescimo']){$(key).type='text';$(key).inputMode=key==='q'?'numeric':'decimal';}
-                const discountRow=document.createElement('div');discountRow.style.cssText='display:flex;gap:12px;align-items:center';
-                $('desconto').before(discountRow);discountRow.append($('desconto'));
-                const percent=document.createElement('output');percent.id='discount-percent';percent.setAttribute('aria-live','polite');percent.style.cssText='white-space:nowrap;min-width:65px;color:#20366c';discountRow.append(percent);
+                for(const key of ['q','preco']){$(key).type='text';$(key).inputMode=key==='q'?'numeric':'decimal';}
                 $('preco').insertAdjacentHTML('afterend','<label for="entry-unit-cost">Custo por unidade de controle (calculado)</label><input id="entry-unit-cost" readonly>');
                 $('q').previousElementSibling.textContent='Quantidade comprada (na unidade ou embalagem selecionada)';
-                $('datacompra').value=localDate(new Date()); $('datarecebimento').value=localDate(new Date());
-                const invoice=[...document.querySelectorAll('#page input')].find(x=>x.placeholder==='Número da nota'); if(invoice) invoice.id='invoice';
-                const additionRow=document.createElement('div');additionRow.style.cssText='display:flex;gap:12px;align-items:center';
-                $('acrescimo').before(additionRow);additionRow.append($('acrescimo'));
-                const additionPercent=document.createElement('output');additionPercent.id='addition-percent';additionPercent.setAttribute('aria-live','polite');additionPercent.style.cssText='white-space:nowrap;min-width:65px;color:#20366c';additionRow.append(additionPercent);
+                $('datarecebimento').value=localDate(new Date());
                 const grid=document.querySelector('#formmov>.two'),columns=[];
-                for(const keys of [['tipoemb','q','localcompra','datacompra','datarecebimento','invoice'],['pessoa','preco','entry-unit-cost','desconto','acrescimo']]){
+                for(const keys of [['tipoemb','q','localcompra','datarecebimento'],['preco','entry-unit-cost']]){
                     const column=document.createElement('div');
                     for(const key of keys){
-                        const input=$(key),control=['desconto','acrescimo'].includes(key)?input.parentElement:input,label=control.previousElementSibling;
+                        const input=$(key),control=input,label=control.previousElementSibling;
                         const field=document.createElement('div');field.style.marginBottom='12px';field.append(label,control);
                         if(key==='q')field.append($('calc'));
                         column.append(field);
@@ -591,7 +584,7 @@
         show(2);editingProduct=product;
         $('page').querySelector('h1').textContent='Editar produto';
         document.querySelector('.registration-panel button.action').textContent='Salvar alterações';
-        const fields={code:product.Code,nome:product.Name,cat:product.Category,un:product.Unit,min:product.Minimum,local:product.Location};
+        const fields={code:product.Code,nome:product.Name,cat:product.Category,un:product.Unit,min:product.Minimum};
         for(const [key,value] of Object.entries(fields)){
             const field=$(key);if(field.tagName==='SELECT'&&value&&![...field.options].some(o=>o.value===String(value)))field.add(new Option(value,value));field.value=value;
         }
@@ -611,7 +604,7 @@
         const code=$('code').value.trim(),name=$('nome').value.trim();let unit=$('un').value.trim();
         const minimum=Number($('min').value);
         if(!code||!name||!unit||!$('min').value.trim()||!Number.isSafeInteger(minimum)||minimum<0)throw new Error('Preencha código, nome, medida e mínimo inteiro não negativo.');
-        const p={...editingProduct,Code:code,Name:name,Unit:unit,Category:$('cat').value,ControlLevels:[],MinimumPackageQuantity:null,Minimum:minimum,Target:Math.max(minimum,editingProduct?.Target??minimum),Location:$('local').value.trim(),Active:true,Packages:editingProduct?.Packages??[]};
+        const p={...editingProduct,Code:code,Name:name,Unit:unit,Category:$('cat').value,ControlLevels:[],MinimumPackageQuantity:null,Minimum:minimum,Target:Math.max(minimum,editingProduct?.Target??minimum),Active:true,Packages:editingProduct?.Packages??[]};
         sync(await request('saveProduct',p));if(editingProduct){editingProduct=null;show(1);return;}lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('print-saved-label').hidden=false;$('msg').textContent='Produto cadastrado. Você já pode imprimir a etiqueta. Registre o saldo inicial em Entrada.';
     });};
     buscar=function(){
@@ -666,32 +659,31 @@
         const remembered=product.PackagingStructure;
         const bundle=product.Packages.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='fardo');
         const box=product.Packages.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='caixa');
-        const units=remembered?.UnitsPerBundle??bundle?.Factor??'';
-        const bundles=remembered?.BundlesPerBox??(box&&bundle&&box.Factor%bundle.Factor===0?box.Factor/bundle.Factor:'');
-        panel.innerHTML='<div id="packaging-fields"><details style="border:1px solid #dce2ec;border-radius:8px;padding:12px"><summary id="packaging-summary" style="cursor:pointer;color:#20366c"></summary><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px"><label style="flex:1;min-width:140px">📦 Fardos por caixa<input id="bundles-per-box" type="number" min="1" max="10000" step="1"></label><label style="flex:1;min-width:140px">▤ '+esc(product.Unit)+' por fardo<input id="units-per-bundle" type="number" min="1" max="10000" step="1"></label></div><small>A estrutura será lembrada para este produto ao confirmar.</small></details><label>'+(current===3?'O que chegou?':'O que vai sair?')+'</label><div style="display:flex;gap:12px;flex-wrap:wrap"><label style="flex:1;min-width:100px">Caixas<input id="structure-boxes" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">Fardos avulsos<input id="structure-bundles" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">'+esc(product.Unit)+' avulsos<input id="structure-units" type="number" min="0" step="1" value="0"></label></div><p id="structure-equation" aria-live="polite" class="source-note"></p></div>';
+        const combined=product.Packages.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='caixa / fardo');
+        const units=remembered?.UnitsPerBundle??combined?.Factor??bundle?.Factor??box?.Factor??'';
+        panel.innerHTML='<div id="packaging-fields"><details style="border:1px solid #dce2ec;border-radius:8px;padding:12px"><summary id="packaging-summary" style="cursor:pointer;color:#20366c"></summary><div style="margin-top:10px"><label>📦 '+esc(product.Unit)+' por caixa / fardo<input id="units-per-bundle" type="number" min="1" max="10000" step="1"></label></div><small>A estrutura será lembrada para este produto ao confirmar.</small></details><label>'+(current===3?'O que chegou?':'O que vai sair?')+'</label><div style="display:flex;gap:12px;flex-wrap:wrap"><label style="flex:1;min-width:100px">Caixa / fardo<input id="structure-packages" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">'+esc(product.Unit)+' avulsos<input id="structure-units" type="number" min="0" step="1" value="0"></label></div><p id="structure-equation" aria-live="polite" class="source-note"></p></div>';
         $('tipoemb').previousElementSibling.before(panel);
-        $('bundles-per-box').value=bundles;$('units-per-bundle').value=units;
-        panel.querySelector('details').open=!bundles||!units;
+        $('units-per-bundle').value=units;
+        panel.querySelector('details').open=!units;
         const legacy=[$('tipoemb'),$('tipoemb').previousElementSibling,$('q'),$('q').previousElementSibling,$('new-movement-package'),$('mixed-output')].filter(Boolean);
         legacy.forEach(el=>{el.hidden=true;el.style.display='none';});
         panel.addEventListener('input',()=>{
-            $('packaging-summary').textContent='1 caixa = '+$('bundles-per-box').value+' fardos → 1 fardo = '+$('units-per-bundle').value+' '+product.Unit;
+            $('packaging-summary').textContent='1 caixa / fardo = '+$('units-per-bundle').value+' '+product.Unit;
             calc();
         });
-        $('packaging-summary').textContent=bundles&&units?'1 caixa = '+bundles+' fardos → 1 fardo = '+units+' '+product.Unit:'Defina o conteúdo da caixa e do fardo';
+        $('packaging-summary').textContent=units?'1 caixa / fardo = '+units+' '+product.Unit:'Defina o conteúdo da caixa / fardo';
         // The structure replaces the previous quantity controls in both screens.
     }
-    function focusMovementQuantity(){const input=$('structure-units')??$('q');input?.focus();input?.select();}
+    function focusMovementQuantity(){const input=$('structure-packages')??$('q');input?.focus();input?.select();}
     function usingStructure(){return !!$('packaging-structure');}
     function structureParts(){
-        const b=Number($('bundles-per-box').value),u=Number($('units-per-bundle').value);
-        const boxes=Number($('structure-boxes').value),bundles=Number($('structure-bundles').value);
+        const u=Number($('units-per-bundle').value),quantity=Number($('structure-packages').value);
         const valid=n=>Number.isSafeInteger(n)&&n>0&&n<=10000;
-        if((boxes!==0&&(!valid(b)||!valid(u)))||(bundles!==0&&!valid(u))||($('bundles-per-box').value!==''&&!valid(b))||($('units-per-bundle').value!==''&&!valid(u)))return [{PackageIndex:-1,Quantity:NaN}];
-        return [{PackageIndex:-1,Quantity:boxes,NewPackage:{Name:'Caixa',Factor:b*u||1}},
-            {PackageIndex:-1,Quantity:bundles,NewPackage:{Name:'Fardo',Factor:u||1}},
+        if((quantity!==0&&!valid(u))||($('units-per-bundle').value!==''&&!valid(u)))return [{PackageIndex:-1,Quantity:NaN}];
+        return [{PackageIndex:-1,Quantity:quantity,NewPackage:{Name:'Caixa / fardo',Factor:u||1}},
             {PackageIndex:-1,Quantity:Number($('structure-units').value)}];
     }
+
     function movementOptions(product){
         return '<option value="1">'+esc(product.Unit)+' (medida do saldo)</option>'+product.Packages.map(pk=>'<option value="'+pk.Factor+'">'+esc(pk.Name)+' com '+pk.Factor+' '+esc(product.Unit)+'</option>').join('')+'<option value="new">Nova embalagem…</option>';
     }
@@ -734,32 +726,28 @@
     }
     calcFinanceiro=function(){
         if(current!==3||!$('preco'))return;
-        const total=moneyInput('preco')-moneyInput('desconto')+moneyInput('acrescimo'),units=$('new-movement-package')?outputParts().reduce((sum,part)=>sum+part.Quantity*partFactor(part),0):Number($('q').value);
-        const price=moneyInput('preco'),discount=moneyInput('desconto');
-        if($('discount-percent'))$('discount-percent').textContent=Number.isFinite(price)&&price>0&&Number.isFinite(discount)?(discount/price*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%':'—';
-        const addition=moneyInput('acrescimo');
-        if($('addition-percent'))$('addition-percent').textContent=Number.isFinite(price)&&price>0&&Number.isFinite(addition)?(addition/price*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%':'—';
+        const total=moneyInput('preco'),units=$('new-movement-package')?outputParts().reduce((sum,part)=>sum+part.Quantity*partFactor(part),0):Number($('q').value);
         const valid=Number.isFinite(total)&&total>=0&&units>0;
         if($('entry-unit-cost'))$('entry-unit-cost').value=valid?referenceMoney(total/units):'';
         $('financeiro').textContent=valid?`Total pago: ${referenceMoney(total)} • Quantidade no estoque: ${units} ${selected?.un||''} • Custo por unidade: ${referenceMoney(total/units)}`:'Informe quantidade e valores válidos para calcular o custo por unidade.';
     };
     movimentar=function(){save(async()=>{
         if(!selected)throw new Error('Busque um produto antes de confirmar.');
-        const quantity=Number($('q').value),factor=partFactor(outputParts()[0]),person=$('pessoa').value.trim();
-        if((!usingStructure()&&(!Number.isInteger(quantity)||(current===3?quantity<=0:quantity<0)))||!person)throw new Error('Informe uma quantidade inteira positiva e o responsável.');
+        const quantity=Number($('q').value),factor=partFactor(outputParts()[0]);
+        if((!usingStructure()&&(!Number.isInteger(quantity)||(current===3?quantity<=0:quantity<0))))throw new Error('Informe uma quantidade inteira positiva.');
         const p=inventory.Products.find(x=>x.Id===selected.id);
-        const m={ProductId:p.Id,Type:current===3?'Entrada':'Saída',Date:new Date().toISOString(),Quantity:quantity,Factor:Number.isFinite(factor)?factor:1,Person:person,Sector:current===3?'':$('setor').value.trim(),Note:'',Package:$('tipoemb').selectedOptions[0].textContent,ReferenceSource:p.ReferenceSource,ReferenceDate:p.ReferenceDate};
+        const m={ProductId:p.Id,Type:current===3?'Entrada':'Saída',Date:new Date().toISOString(),Quantity:quantity,Factor:Number.isFinite(factor)?factor:1,Note:'',Package:$('tipoemb').selectedOptions[0].textContent,ReferenceSource:p.ReferenceSource,ReferenceDate:p.ReferenceDate};
         const parts=outputParts();
         if(parts.some(part=>!Number.isSafeInteger(part.Quantity)||part.Quantity<0)||!parts.some(part=>part.Quantity>0)||parts.filter(part=>part.Quantity>0).some(part=>!validPart(part)))throw new Error('Informe quantidades inteiras positivas e o conteúdo de cada embalagem.');
         m.Parts=parts.filter(part=>part.Quantity>0);
-        if(usingStructure()&&Number($('bundles-per-box').value)>0&&Number($('units-per-bundle').value)>0)m.PackagingStructure={BundlesPerBox:Number($('bundles-per-box').value),UnitsPerBundle:Number($('units-per-bundle').value)};
+        if(usingStructure()&&Number($('units-per-bundle').value)>0)m.PackagingStructure={BundlesPerBox:1,UnitsPerBundle:Number($('units-per-bundle').value)};
         if(current===3){
-            const price=moneyInput('preco'),discount=moneyInput('desconto'),addition=moneyInput('acrescimo');
-            const total=price-discount+addition;
-            if(!$('localcompra').value.trim()||!$('datacompra').value||![price,discount,addition,total].every(Number.isFinite)||price<0||discount<0||addition<0||total<0)throw new Error('Informe local, data e valores válidos.');
-            m.Store=$('localcompra').value.trim();m.PurchaseDate=$('datacompra').value+'T00:00:00';
+            const total=moneyInput('preco');
+            if(!$('localcompra').value.trim()||!Number.isFinite(total)||total<0)throw new Error('Informe o local da compra e um valor válido.');
+            m.Store=$('localcompra').value.trim();
             m.Date=($('datarecebimento').value||localDate(new Date()))+'T'+new Date().toTimeString().slice(0,8);
-            m.Total=total;m.ReferenceTotal=null;m.Invoice=$('invoice')?.value.trim()||'';
+            m.PurchaseDate=m.Date.slice(0,10)+'T00:00:00';
+            m.Total=total;m.ReferenceTotal=null;
         }
         const id=selected.id;sync(await request('move',m));const updated=produtos.find(p=>p.id===id);
         $('msg').textContent=`Movimentação registrada. Novo saldo: ${updated.saldo} ${updated.un}.`;

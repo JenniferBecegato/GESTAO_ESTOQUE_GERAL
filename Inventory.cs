@@ -209,9 +209,10 @@ public static class InventoryRules
             }
             m.Quantity=parts.Count==1?parts[0].Quantity:total;m.Factor=parts.Count==1?parts[0].Factor:1;m.Package=string.Join(" + ",descriptions);
         }
-        if (m.Quantity <= 0 || m.Quantity != decimal.Truncate(m.Quantity) || m.Factor <= 0 || m.Factor != decimal.Truncate(m.Factor) || string.IsNullOrWhiteSpace(m.Person)) throw new ArgumentException("Informe quantidade e fator inteiros positivos e responsável.");
+        if (m.Quantity <= 0 || m.Quantity != decimal.Truncate(m.Quantity) || m.Factor <= 0 || m.Factor != decimal.Truncate(m.Factor)) throw new ArgumentException("Informe quantidade e fator inteiros positivos.");
         m.Converted = checked(m.Quantity * m.Factor);
         if (m.Type != "Entrada" && m.Converted > p.Balance) throw new ArgumentException("A quantidade supera o saldo disponível.");
+        if (m.Type.StartsWith("Ajuste") && string.IsNullOrWhiteSpace(m.Person)) throw new ArgumentException("Informe o responsável pelo ajuste.");
         if (m.Type.StartsWith("Ajuste") && string.IsNullOrWhiteSpace(m.Note)) throw new ArgumentException("O ajuste exige um motivo.");
         if (m.Total < 0) throw new ArgumentException("O valor total não pode ser negativo.");
         m.ProductName = p.Name; m.Category = p.Category; m.Unit = p.Unit;
