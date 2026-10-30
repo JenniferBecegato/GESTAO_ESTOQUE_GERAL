@@ -666,32 +666,31 @@
         const remembered=product.PackagingStructure;
         const bundle=product.Packages.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='fardo');
         const box=product.Packages.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='caixa');
-        const units=remembered?.UnitsPerBundle??bundle?.Factor??'';
-        const bundles=remembered?.BundlesPerBox??(box&&bundle&&box.Factor%bundle.Factor===0?box.Factor/bundle.Factor:'');
-        panel.innerHTML='<div id="packaging-fields"><details style="border:1px solid #dce2ec;border-radius:8px;padding:12px"><summary id="packaging-summary" style="cursor:pointer;color:#20366c"></summary><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px"><label style="flex:1;min-width:140px">📦 Fardos por caixa<input id="bundles-per-box" type="number" min="1" max="10000" step="1"></label><label style="flex:1;min-width:140px">▤ '+esc(product.Unit)+' por fardo<input id="units-per-bundle" type="number" min="1" max="10000" step="1"></label></div><small>A estrutura será lembrada para este produto ao confirmar.</small></details><label>'+(current===3?'O que chegou?':'O que vai sair?')+'</label><div style="display:flex;gap:12px;flex-wrap:wrap"><label style="flex:1;min-width:100px">Caixas<input id="structure-boxes" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">Fardos avulsos<input id="structure-bundles" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">'+esc(product.Unit)+' avulsos<input id="structure-units" type="number" min="0" step="1" value="0"></label></div><p id="structure-equation" aria-live="polite" class="source-note"></p></div>';
+        const combined=product.Packages.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='caixa / fardo');
+        const units=remembered?.UnitsPerBundle??combined?.Factor??bundle?.Factor??box?.Factor??'';
+        panel.innerHTML='<div id="packaging-fields"><details style="border:1px solid #dce2ec;border-radius:8px;padding:12px"><summary id="packaging-summary" style="cursor:pointer;color:#20366c"></summary><div style="margin-top:10px"><label>▤ '+esc(product.Unit)+' por caixa / fardo<input id="units-per-bundle" type="number" min="1" max="10000" step="1"></label></div><small>A estrutura será lembrada para este produto ao confirmar.</small></details><label>'+(current===3?'O que chegou?':'O que vai sair?')+'</label><div style="display:flex;gap:12px;flex-wrap:wrap"><label style="flex:1;min-width:100px">Caixa / fardo<input id="structure-packages" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">'+esc(product.Unit)+' avulsos<input id="structure-units" type="number" min="0" step="1" value="0"></label></div><p id="structure-equation" aria-live="polite" class="source-note"></p></div>';
         $('tipoemb').previousElementSibling.before(panel);
-        $('bundles-per-box').value=bundles;$('units-per-bundle').value=units;
-        panel.querySelector('details').open=!bundles||!units;
+        $('units-per-bundle').value=units;
+        panel.querySelector('details').open=!units;
         const legacy=[$('tipoemb'),$('tipoemb').previousElementSibling,$('q'),$('q').previousElementSibling,$('new-movement-package'),$('mixed-output')].filter(Boolean);
         legacy.forEach(el=>{el.hidden=true;el.style.display='none';});
         panel.addEventListener('input',()=>{
-            $('packaging-summary').textContent='1 caixa = '+$('bundles-per-box').value+' fardos → 1 fardo = '+$('units-per-bundle').value+' '+product.Unit;
+            $('packaging-summary').textContent='1 caixa / fardo = '+$('units-per-bundle').value+' '+product.Unit;
             calc();
         });
-        $('packaging-summary').textContent=bundles&&units?'1 caixa = '+bundles+' fardos → 1 fardo = '+units+' '+product.Unit:'Defina o conteúdo da caixa e do fardo';
+        $('packaging-summary').textContent=units?'1 caixa / fardo = '+units+' '+product.Unit:'Defina o conteúdo da caixa / fardo';
         // The structure replaces the previous quantity controls in both screens.
     }
-    function focusMovementQuantity(){const input=$('structure-units')??$('q');input?.focus();input?.select();}
+    function focusMovementQuantity(){const input=$('structure-packages')??$('q');input?.focus();input?.select();}
     function usingStructure(){return !!$('packaging-structure');}
     function structureParts(){
-        const b=Number($('bundles-per-box').value),u=Number($('units-per-bundle').value);
-        const boxes=Number($('structure-boxes').value),bundles=Number($('structure-bundles').value);
+        const u=Number($('units-per-bundle').value),quantity=Number($('structure-packages').value);
         const valid=n=>Number.isSafeInteger(n)&&n>0&&n<=10000;
-        if((boxes!==0&&(!valid(b)||!valid(u)))||(bundles!==0&&!valid(u))||($('bundles-per-box').value!==''&&!valid(b))||($('units-per-bundle').value!==''&&!valid(u)))return [{PackageIndex:-1,Quantity:NaN}];
-        return [{PackageIndex:-1,Quantity:boxes,NewPackage:{Name:'Caixa',Factor:b*u||1}},
-            {PackageIndex:-1,Quantity:bundles,NewPackage:{Name:'Fardo',Factor:u||1}},
+        if((quantity!==0&&!valid(u))||($('units-per-bundle').value!==''&&!valid(u)))return [{PackageIndex:-1,Quantity:NaN}];
+        return [{PackageIndex:-1,Quantity:quantity,NewPackage:{Name:'Caixa / fardo',Factor:u||1}},
             {PackageIndex:-1,Quantity:Number($('structure-units').value)}];
     }
+
     function movementOptions(product){
         return '<option value="1">'+esc(product.Unit)+' (medida do saldo)</option>'+product.Packages.map(pk=>'<option value="'+pk.Factor+'">'+esc(pk.Name)+' com '+pk.Factor+' '+esc(product.Unit)+'</option>').join('')+'<option value="new">Nova embalagem…</option>';
     }
@@ -752,7 +751,7 @@
         const parts=outputParts();
         if(parts.some(part=>!Number.isSafeInteger(part.Quantity)||part.Quantity<0)||!parts.some(part=>part.Quantity>0)||parts.filter(part=>part.Quantity>0).some(part=>!validPart(part)))throw new Error('Informe quantidades inteiras positivas e o conteúdo de cada embalagem.');
         m.Parts=parts.filter(part=>part.Quantity>0);
-        if(usingStructure()&&Number($('bundles-per-box').value)>0&&Number($('units-per-bundle').value)>0)m.PackagingStructure={BundlesPerBox:Number($('bundles-per-box').value),UnitsPerBundle:Number($('units-per-bundle').value)};
+        if(usingStructure()&&Number($('units-per-bundle').value)>0)m.PackagingStructure={BundlesPerBox:1,UnitsPerBundle:Number($('units-per-bundle').value)};
         if(current===3){
             const price=moneyInput('preco'),discount=moneyInput('desconto'),addition=moneyInput('acrescimo');
             const total=price-discount+addition;
