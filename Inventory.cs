@@ -16,6 +16,11 @@ public sealed class ControlLevel
     public decimal Factor { get; set; } = 1;
     public decimal Minimum { get; set; }
 }
+public sealed class PackagingStructure
+{
+    public decimal BundlesPerBox { get; set; }
+    public decimal UnitsPerBundle { get; set; }
+}
 public sealed class Product
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -39,6 +44,7 @@ public sealed class Product
     public DateTime ReferenceDate { get; set; } = DateTime.Today;
     public bool Active { get; set; } = true;
     public List<Package> Packages { get; set; } = [];
+    public PackagingStructure? PackagingStructure { get; set; }
 }
 public sealed class MovementPart
 {
@@ -50,6 +56,7 @@ public sealed class MovementPart
 }
 public sealed class Movement
 {
+    public PackagingStructure? PackagingStructure { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public List<MovementPart> Parts { get; set; } = [];
     public Guid PurchaseId { get; set; }
@@ -177,10 +184,12 @@ public static class InventoryRules
         if (!p.Active) throw new ArgumentException("O produto está inativo.");
         // Resolve into local values first: rejected operations must not save packaging.
         var packages = new List<Package>(p.Packages);
+        if(m.PackagingStructure is {} structure){
+            if(m.Type!="Entrada"&&m.Type!="Saída"||structure.BundlesPerBox<1||structure.UnitsPerBundle<1||structure.BundlesPerBox>10000||structure.UnitsPerBundle>10000||structure.BundlesPerBox!=decimal.Truncate(structure.BundlesPerBox)||structure.UnitsPerBundle!=decimal.Truncate(structure.UnitsPerBundle))throw new ArgumentException("Informe conteúdos inteiros positivos para caixa e fardo (até 10.000).");
+        }
         var parts = new List<MovementPart>();
         if(m.Parts.Count>0){
             if(m.Type!="Saída" && m.Type!="Entrada")throw new ArgumentException("Apresentações disponíveis apenas em entrada e saída.");
-            if(m.Type=="Entrada" && m.Parts.Count!=1)throw new ArgumentException("Informe uma apresentação por entrada.");
             decimal total=0;var descriptions=new List<string>();
             foreach(var part in m.Parts){
                 if(part.Quantity<=0||part.Quantity!=decimal.Truncate(part.Quantity))throw new ArgumentException("Apresentação ou quantidade inválida.");
@@ -216,6 +225,7 @@ public static class InventoryRules
         else { m.AppliedCost = p.AverageCost; p.Balance -= m.Converted; }
         if(packages.Count!=p.Packages.Count){p.Packages=packages;p.ControlLevels=[];p.MinimumPackageQuantity=null;}
         if(parts.Count>0)m.Parts=parts;
+        if(m.PackagingStructure is {} remembered)p.PackagingStructure=new PackagingStructure{BundlesPerBox=remembered.BundlesPerBox,UnitsPerBundle=remembered.UnitsPerBundle};
         state.Movements.Add(m);
     }
 }

@@ -348,7 +348,7 @@
             $('link-save').disabled=true;$('link-cancel').disabled=true;$('link-error').textContent='';
             try{
                 sync(await request('linkCode',{productId,code}));dialog.close();
-                if(current===3||current===4){$('codigo').value=code;buscar();$('msg').textContent='Código vinculado ao produto. Confira os dados e confirme a movimentação quando estiver pronto.';$('q').focus();$('q').select();}
+                if(current===3||current===4){$('codigo').value=code;buscar();$('msg').textContent='Código vinculado ao produto. Confira os dados e confirme a movimentação quando estiver pronto.';focusMovementQuantity();}
             }catch(error){$('link-error').textContent=error.message;}
             finally{if(!dialog.isConnected)return;$('link-save').disabled=false;$('link-cancel').disabled=false;}
         };
@@ -356,9 +356,10 @@
     }
     atualizaLista=function(){const query=$('busca').value.toLocaleLowerCase('pt-BR');$('lista').innerHTML=table(produtos.filter(p=>(p.nome+' '+p.code+' '+p.aliases.join(' ')).toLocaleLowerCase('pt-BR').includes(query)));};
     function setupScanner(){
-        clearTimeout(scanTimer);const input=$('codigo');input.autocomplete='off';input.spellcheck=false;input.placeholder='Digite ou bipe o código de barras';
+        clearTimeout(scanTimer);const input=$('codigo');input.autocomplete='off';input.spellcheck=false;input.placeholder='Digite parte do nome ou bipe o código de barras';
+        input.previousElementSibling.textContent='Código ou nome do produto';
         const reset=()=>{selected=null;$('formmov').classList.add('hide');$('produto').replaceChildren();};
-        input.onkeydown=e=>{if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();clearTimeout(scanTimer);buscar();if(selected){$('q').focus();$('q').select();}}};
+        input.onkeydown=e=>{if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();clearTimeout(scanTimer);buscar();if(selected){focusMovementQuantity();}}};
         input.addEventListener('input',()=>{reset();clearTimeout(scanTimer);const code=input.value.trim();scanTimer=setTimeout(()=>{if(current!==3&&current!==4)return;if(produtos.some(p=>p.code===code||p.aliases.includes(code)||p.packages.some(pk=>pk.Code&&pk.Code===code)))buscar();},350);});
         input.addEventListener('focus',()=>input.select());requestAnimationFrame(()=>input.focus());
     }
@@ -486,7 +487,7 @@
             arrangeRegistration();
         }
         if(current===3||current===4) {
-            dataNotice(document.querySelector('#page > .notice'),'Digite o código e pressione Enter ou bipe com o leitor em modo teclado. Aceita Enter, Tab ou leitura completa sem sufixo. F8 retorna ao campo do código.');
+            dataNotice(document.querySelector('#page > .notice'),'Digite o código ou parte do nome e pressione Enter ou clique em Buscar produto. O leitor continua aceitando Enter, Tab ou leitura completa sem sufixo. F8 retorna ao campo de busca.');
             setupScanner();
             $('q').type='text';$('q').inputMode='numeric';
             if(current===4){
@@ -614,12 +615,25 @@
         sync(await request('saveProduct',p));if(editingProduct){editingProduct=null;show(1);return;}lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('print-saved-label').hidden=false;$('msg').textContent='Produto cadastrado. Você já pode imprimir a etiqueta. Registre o saldo inicial em Entrada.';
     });};
     buscar=function(){
-        const code=$('codigo').value.trim(); const p=produtos.find(x=>x.code===code||x.aliases.includes(code)||x.packages.some(pk=>pk.Code&&pk.Code===code));
+        const code=$('codigo').value.trim(); let p=produtos.find(x=>x.code===code||x.aliases.includes(code)||x.packages.some(pk=>pk.Code&&pk.Code===code));
+        if(!p&&code){
+            const matches=produtos.filter(x=>x.nome.toLocaleLowerCase('pt-BR').includes(code.toLocaleLowerCase('pt-BR')));
+            if(matches.length===1)p=matches[0];
+            else if(matches.length>1){
+                selected=null;$('formmov').classList.add('hide');$('msg').textContent='';
+                $('produto').innerHTML='<p>Selecione o produto:</p>';
+                for(const match of matches){
+                    const button=document.createElement('button');button.type='button';button.className='action secondary';button.textContent=match.nome+' · '+match.code;
+                    button.onclick=()=>{$('codigo').value=match.code;buscar();focusMovementQuantity();};$('produto').append(button);
+                }
+                return;
+            }
+        }
         if(p)$('codigo').value=p.code;
         referenceSearch(); $('codigo').value=code;
         if(!selected){
-            if(!code){$('produto').textContent='Digite ou bipe o código do produto.';return;}
-            $('produto').innerHTML='<p>Código <strong>'+esc(code)+'</strong> não encontrado.</p><button type="button" class="action" id="link-existing-product">Vincular a um produto existente</button><button type="button" class="action secondary" id="register-new-product">Cadastrar novo produto</button>';
+            if(!code){$('produto').textContent='Digite o código ou parte do nome do produto.';return;}
+            $('produto').innerHTML='<p>Nenhum produto encontrado para <strong>'+esc(code)+'</strong>.</p><button type="button" class="action" id="link-existing-product">Vincular a um produto existente</button><button type="button" class="action secondary" id="register-new-product">Cadastrar novo produto</button>';
             $('link-existing-product').onclick=()=>openLinkCode(code);$('register-new-product').onclick=()=>{show(2);$('code').value=code;};return;
         }
         const base=inventory.Products.find(x=>x.Id===selected.id);
@@ -643,8 +657,41 @@
             };
             mixed.append(add);$('calc').after(mixed);
         }
+        setupPackagingStructure(base);
         calc();
     };
+    function setupPackagingStructure(product){
+        $('packaging-structure')?.remove();
+        const panel=document.createElement('div');panel.id='packaging-structure';panel.style.cssText='margin:14px 0';
+        const remembered=product.PackagingStructure;
+        const bundle=product.Packages.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='fardo');
+        const box=product.Packages.find(p=>p.Name.toLocaleLowerCase('pt-BR')==='caixa');
+        const units=remembered?.UnitsPerBundle??bundle?.Factor??'';
+        const bundles=remembered?.BundlesPerBox??(box&&bundle&&box.Factor%bundle.Factor===0?box.Factor/bundle.Factor:'');
+        panel.innerHTML='<div id="packaging-fields"><details style="border:1px solid #dce2ec;border-radius:8px;padding:12px"><summary id="packaging-summary" style="cursor:pointer;color:#20366c"></summary><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px"><label style="flex:1;min-width:140px">📦 Fardos por caixa<input id="bundles-per-box" type="number" min="1" max="10000" step="1"></label><label style="flex:1;min-width:140px">▤ '+esc(product.Unit)+' por fardo<input id="units-per-bundle" type="number" min="1" max="10000" step="1"></label></div><small>A estrutura será lembrada para este produto ao confirmar.</small></details><label>'+(current===3?'O que chegou?':'O que vai sair?')+'</label><div style="display:flex;gap:12px;flex-wrap:wrap"><label style="flex:1;min-width:100px">Caixas<input id="structure-boxes" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">Fardos avulsos<input id="structure-bundles" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">'+esc(product.Unit)+' avulsos<input id="structure-units" type="number" min="0" step="1" value="0"></label></div><p id="structure-equation" aria-live="polite" class="source-note"></p></div>';
+        $('tipoemb').previousElementSibling.before(panel);
+        $('bundles-per-box').value=bundles;$('units-per-bundle').value=units;
+        panel.querySelector('details').open=!bundles||!units;
+        const legacy=[$('tipoemb'),$('tipoemb').previousElementSibling,$('q'),$('q').previousElementSibling,$('new-movement-package'),$('mixed-output')].filter(Boolean);
+        legacy.forEach(el=>{el.hidden=true;el.style.display='none';});
+        panel.addEventListener('input',()=>{
+            $('packaging-summary').textContent='1 caixa = '+$('bundles-per-box').value+' fardos → 1 fardo = '+$('units-per-bundle').value+' '+product.Unit;
+            calc();
+        });
+        $('packaging-summary').textContent=bundles&&units?'1 caixa = '+bundles+' fardos → 1 fardo = '+units+' '+product.Unit:'Defina o conteúdo da caixa e do fardo';
+        // The structure replaces the previous quantity controls in both screens.
+    }
+    function focusMovementQuantity(){const input=$('structure-units')??$('q');input?.focus();input?.select();}
+    function usingStructure(){return !!$('packaging-structure');}
+    function structureParts(){
+        const b=Number($('bundles-per-box').value),u=Number($('units-per-bundle').value);
+        const boxes=Number($('structure-boxes').value),bundles=Number($('structure-bundles').value);
+        const valid=n=>Number.isSafeInteger(n)&&n>0&&n<=10000;
+        if((boxes!==0&&(!valid(b)||!valid(u)))||(bundles!==0&&!valid(u))||($('bundles-per-box').value!==''&&!valid(b))||($('units-per-bundle').value!==''&&!valid(u)))return [{PackageIndex:-1,Quantity:NaN}];
+        return [{PackageIndex:-1,Quantity:boxes,NewPackage:{Name:'Caixa',Factor:b*u||1}},
+            {PackageIndex:-1,Quantity:bundles,NewPackage:{Name:'Fardo',Factor:u||1}},
+            {PackageIndex:-1,Quantity:Number($('structure-units').value)}];
+    }
     function movementOptions(product){
         return '<option value="1">'+esc(product.Unit)+' (medida do saldo)</option>'+product.Packages.map(pk=>'<option value="'+pk.Factor+'">'+esc(pk.Name)+' com '+pk.Factor+' '+esc(product.Unit)+'</option>').join('')+'<option value="new">Nova embalagem…</option>';
     }
@@ -659,6 +706,7 @@
         return part;
     }
     function outputParts(){
+        if(usingStructure())return structureParts();
         return [readPart($('tipoemb'),$('q'),$('new-movement-package')),...[...document.querySelectorAll('.output-part')].map(row=>readPart(row.querySelector('select'),row.querySelector('.part-quantity'),row.querySelector('.movement-package-fields')))];
     }
     function partFactor(part){
@@ -674,6 +722,7 @@
         const parts=outputParts().filter(part=>part.Quantity!==0);
         const total=parts.reduce((sum,part)=>sum+part.Quantity*partFactor(part),0);
         const balance=selected.saldo+(current===3?total:-total);
+        if(usingStructure())$('structure-equation').textContent=parts.every(validPart)&&Number.isSafeInteger(total)?parts.map(part=>part.Quantity+' × '+(part.NewPackage?.Name??selected.un)+(part.NewPackage?' ('+part.NewPackage.Factor+' '+selected.un+')':'')).join(' + ')+' = '+total+' '+selected.un:'Confira o conteúdo das embalagens e as quantidades.';
         $('calc').textContent=parts.length&&parts.every(validPart)&&Number.isSafeInteger(total)?'Total: '+total+' '+selected.un+'. Saldo após '+(current===3?'entrada':'retirada')+': '+balance+' '+selected.un+'.'+(balance<0?' Saldo insuficiente.':''):'Informe quantidade e conteúdo da embalagem para conferir o saldo.';
         if(current===3)calcFinanceiro();
     };
@@ -685,7 +734,7 @@
     }
     calcFinanceiro=function(){
         if(current!==3||!$('preco'))return;
-        const quantity=Number($('q').value),factor=$('new-movement-package')?partFactor(outputParts()[0]):1,total=moneyInput('preco')-moneyInput('desconto')+moneyInput('acrescimo'),units=quantity*factor;
+        const total=moneyInput('preco')-moneyInput('desconto')+moneyInput('acrescimo'),units=$('new-movement-package')?outputParts().reduce((sum,part)=>sum+part.Quantity*partFactor(part),0):Number($('q').value);
         const price=moneyInput('preco'),discount=moneyInput('desconto');
         if($('discount-percent'))$('discount-percent').textContent=Number.isFinite(price)&&price>0&&Number.isFinite(discount)?(discount/price*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%':'—';
         const addition=moneyInput('acrescimo');
@@ -697,12 +746,13 @@
     movimentar=function(){save(async()=>{
         if(!selected)throw new Error('Busque um produto antes de confirmar.');
         const quantity=Number($('q').value),factor=partFactor(outputParts()[0]),person=$('pessoa').value.trim();
-        if(!Number.isInteger(quantity)||(current===3?quantity<=0:quantity<0)||!person)throw new Error('Informe uma quantidade inteira positiva e o responsável.');
+        if((!usingStructure()&&(!Number.isInteger(quantity)||(current===3?quantity<=0:quantity<0)))||!person)throw new Error('Informe uma quantidade inteira positiva e o responsável.');
         const p=inventory.Products.find(x=>x.Id===selected.id);
         const m={ProductId:p.Id,Type:current===3?'Entrada':'Saída',Date:new Date().toISOString(),Quantity:quantity,Factor:Number.isFinite(factor)?factor:1,Person:person,Sector:current===3?'':$('setor').value.trim(),Note:'',Package:$('tipoemb').selectedOptions[0].textContent,ReferenceSource:p.ReferenceSource,ReferenceDate:p.ReferenceDate};
         const parts=outputParts();
         if(parts.some(part=>!Number.isSafeInteger(part.Quantity)||part.Quantity<0)||!parts.some(part=>part.Quantity>0)||parts.filter(part=>part.Quantity>0).some(part=>!validPart(part)))throw new Error('Informe quantidades inteiras positivas e o conteúdo de cada embalagem.');
         m.Parts=parts.filter(part=>part.Quantity>0);
+        if(usingStructure()&&Number($('bundles-per-box').value)>0&&Number($('units-per-bundle').value)>0)m.PackagingStructure={BundlesPerBox:Number($('bundles-per-box').value),UnitsPerBundle:Number($('units-per-bundle').value)};
         if(current===3){
             const price=moneyInput('preco'),discount=moneyInput('desconto'),addition=moneyInput('acrescimo');
             const total=price-discount+addition;

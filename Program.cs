@@ -4,7 +4,7 @@ internal static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        if(args.Contains("--self-test")) { SelfTest.Run(); return; }
+        if(args.Contains("--self-test")||args.Contains("--structure-test")) { SelfTest.Run(args.Contains("--structure-test")); return; }
         using var mutex = new Mutex(true,"Campos.GestaoEstoqueGeral",out var first);
         if(!first) { MessageBox.Show("O sistema de estoque já está aberto.","Campos"); return; }
         ApplicationConfiguration.Initialize();

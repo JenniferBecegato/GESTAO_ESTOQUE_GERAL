@@ -3,7 +3,7 @@ using Microsoft.Web.WebView2.Core;
 namespace GESTAO_ESTOQUE_GERAL;
 internal static class SelfTest
 {
-    public static void Run()
+    public static void Run(bool structureOnly=false)
     {
         ApplicationConfiguration.Initialize();
         string directory = Path.Combine(AppContext.BaseDirectory,"validacao-layout"); Directory.CreateDirectory(directory);
@@ -38,6 +38,11 @@ internal static class SelfTest
                 await Script("window.addEventListener('error',e=>window.lastScriptError=e.message)");
                 form.Browser.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled=false;
                 form.Browser.CoreWebView2.ScriptDialogOpening += (_,e) => { File.AppendAllText(Path.Combine(directory,"progresso.txt"),"Aviso: " + e.Message + "\n"); e.Accept(); };
+                if(structureOnly){
+                    await CheckPackaging(Script,Wait,Check,Capture);
+                    File.WriteAllText(Path.Combine(directory,"resultado.txt"),$"APROVADO: {checks} verificações da estrutura padrão de movimentação.");
+                    return;
+                }
                 Check(await Script("produtos.length===0 && hist.length===0 && compras.length===0")=="true","Banco vazio sem dados fictícios");
                 Check(await Script("document.querySelector('nav').getBoundingClientRect().width===220")=="true","Largura do menu original: 220px");
                 await Capture("visao-geral");
@@ -356,6 +361,21 @@ internal static class SelfTest
                 Check(await Script("selected.code==='LEGADO' && document.getElementById('tipoemb').selectedIndex===1")=="true","Código específico antigo seleciona a embalagem correta");
                 await Script("show(1);window.fixture=JSON.parse(JSON.stringify(desktopTest.inventory));window.fixture.Products.find(p=>p.Code==='SIMPLES').Balance=5;desktopTest.sync(window.fixture);show(0)");
                 Check(await Script("document.querySelector('.low-stock-scroll').textContent.includes('Papel simplificado')")=="true","Alerta usa mínimo na medida do saldo");
+                await Script("window.structureLoaded=false;desktopTest.request('load').then(s=>{desktopTest.sync(s);window.structureLoaded=true})");
+                await Wait("window.structureLoaded");
+                await Script("show(3);document.getElementById('codigo').value='SIMPLES';buscar();window.structureBalance=selected.saldo;window.structureCount=hist.length;document.getElementById('use-packaging-structure').click();document.getElementById('bundles-per-box').value='10';document.getElementById('units-per-bundle').value='4';document.getElementById('structure-bundles').value='2';document.getElementById('structure-units').value='3';document.getElementById('structure-units').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('pessoa').value='Teste estrutura';document.getElementById('localcompra').value='Loja';document.getElementById('preco').value='102';calcFinanceiro()");
+                Check(await Script("current===3 && document.getElementById('q').hidden && document.getElementById('calc').textContent.includes('51 rolo') && document.getElementById('financeiro').textContent.includes('2,00')")=="true","Entrada preserva tela e converte caixa, fardos e avulsos com custo correto");
+                await Capture("entrada-estrutura-caixa-fardo");
+                await Script("movimentar()");await Wait("hist.length===window.structureCount+1");
+                Check(await Script("desktopTest.inventory.Movements.at(-1).Converted===51 && desktopTest.inventory.Movements.at(-1).Parts.length===3 && desktopTest.inventory.Products.find(p=>p.Code==='SIMPLES').Balance===window.structureBalance+51")=="true","Entrada combinada soma exatamente 51 unidades");
+                await Script("show(4);document.getElementById('codigo').value='SIMPLES';buscar();document.getElementById('use-packaging-structure').click();document.getElementById('structure-boxes').value='0';document.getElementById('structure-bundles').value='1';document.getElementById('structure-units').value='2';document.getElementById('structure-units').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('pessoa').value='Teste estrutura';window.structureCount=hist.length");
+                Check(await Script("current===4 && document.getElementById('bundles-per-box').value==='10' && document.getElementById('units-per-bundle').value==='4' && document.getElementById('calc').textContent.includes('6 rolo')")=="true","Saída separada lembra estrutura do produto e converte fardo com avulsos");
+                await Capture("saida-estrutura-caixa-fardo");
+                await Script("movimentar()");await Wait("hist.length===window.structureCount+1");
+                Check(await Script("desktopTest.inventory.Movements.at(-1).Converted===6 && desktopTest.inventory.Products.find(p=>p.Code==='SIMPLES').Balance===window.structureBalance+45")=="true","Saída combinada desconta exatamente seis unidades");
+                await Script("window.structureSnapshot=JSON.stringify(desktopTest.inventory);window.structureReject='pending';desktopTest.request('move',{ProductId:desktopTest.inventory.Products.find(p=>p.Code==='SIMPLES').Id,Type:'Saída',Person:'Teste',PackagingStructure:{BundlesPerBox:0,UnitsPerBundle:4},Parts:[{PackageIndex:-1,Quantity:1}]}).then(()=>window.structureReject='accepted').catch(()=>window.structureReject='blocked')");
+                await Wait("window.structureReject!=='pending'");
+                Check(await Script("window.structureReject==='blocked' && JSON.stringify(desktopTest.inventory)===window.structureSnapshot")=="true","Estrutura inválida é rejeitada sem alterar estoque");
                 Check(await Script("!window.lastScriptError")=="true","Nenhum erro JavaScript durante os fluxos");
                 // Compara diretamente com o arquivo recebido, no mesmo motor e viewport.
                 var navigated = new TaskCompletionSource();
@@ -374,6 +394,36 @@ internal static class SelfTest
         };
         form.Show();
         Application.Run(form);
+    }
+    private static async Task CheckPackaging(Func<string,Task<string>> script,Func<string,Task> wait,Action<bool,string> check,Func<string,Task> capture)
+    {
+        await script("window.fixtureReady=false;desktopTest.request('saveProduct',{Code:'ESTRUTURA',Name:'Papel higiênico',Unit:'rolo',Category:'Limpeza',Active:true,Packages:[]}).then(s=>{desktopTest.sync(s);window.fixtureReady=true})");
+        await wait("window.fixtureReady");
+        await script("show(3);document.getElementById('codigo').value='ESTRUTURA';buscar()");
+        check(await script("!document.getElementById('use-packaging-structure') && !document.getElementById('packaging-fields').hidden && getComputedStyle(document.getElementById('tipoemb')).display==='none' && getComputedStyle(document.getElementById('q').previousElementSibling).display==='none'")=="true","Estrutura padrão sem checkbox ou campos antigos visíveis");
+        await script("document.getElementById('structure-units').value='2';document.getElementById('structure-units').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('pessoa').value='Teste';document.getElementById('localcompra').value='Loja';document.getElementById('preco').value='4'");
+        check(await script("document.getElementById('calc').textContent.includes('Total: 2 rolo')")=="true","Unidades avulsas não exigem estrutura de embalagem");
+        await script("movimentar()");await wait("hist.length===1");
+        check(await script("desktopTest.inventory.Products[0].Balance===2 && !desktopTest.inventory.Products[0].PackagingStructure")=="true","Entrada avulsa salva saldo sem conversões fictícias");
+        await script("show(3);document.getElementById('codigo').value='ESTRUTURA';buscar();document.getElementById('bundles-per-box').value='10';document.getElementById('units-per-bundle').value='4';document.getElementById('structure-boxes').value='1';document.getElementById('structure-bundles').value='2';document.getElementById('structure-units').value='3';document.getElementById('structure-units').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('pessoa').value='Teste';document.getElementById('localcompra').value='Loja';document.getElementById('preco').value='102';calcFinanceiro()");
+        check(await script("current===3 && document.getElementById('calc').textContent.includes('51 rolo') && document.getElementById('entry-unit-cost').value.includes('2,00')")=="true","Entrada separada calcula 51 rolos e custo unitário correto");
+        await capture("entrada-estrutura-padrao");
+        await script("movimentar()");await wait("hist.length===2");
+        check(await script("desktopTest.inventory.Products[0].Balance===53 && desktopTest.inventory.Movements.at(-1).Parts.length===3")=="true","Entrada combinada grava três parcelas e saldo correto");
+        await script("window.reloaded=false;desktopTest.request('load').then(s=>{desktopTest.sync(s);window.reloaded=true})");await wait("window.reloaded");
+        await script("show(4);document.getElementById('codigo').value='ESTRUTURA';buscar()");
+        check(await script("current===4 && document.getElementById('bundles-per-box').value==='10' && document.getElementById('units-per-bundle').value==='4' && getComputedStyle(document.getElementById('mixed-output')).display==='none'")=="true","Saída separada restaura estrutura e substitui combinação antiga");
+        await script("document.getElementById('structure-bundles').value='1';document.getElementById('structure-units').value='2';document.getElementById('structure-units').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('pessoa').value='Teste'");
+        check(await script("document.getElementById('calc').textContent.includes('Total: 6 rolo')")=="true","Saída converte um fardo e duas unidades");
+        await capture("saida-estrutura-padrao");
+        await script("movimentar()");await wait("hist.length===3");
+        check(await script("desktopTest.inventory.Products[0].Balance===47 && desktopTest.inventory.Movements.at(-1).Converted===6")=="true","Saída desconta seis rolos");
+        await script("show(4);document.getElementById('codigo').value='ESTRUTURA';buscar();document.getElementById('structure-boxes').value='100';document.getElementById('pessoa').value='Teste';movimentar()");
+        await Task.Delay(300);
+        check(await script("hist.length===3 && desktopTest.inventory.Products[0].Balance===47 && selected!==null")=="true","Saldo insuficiente bloqueia confirmação sem alterar estoque");
+        await script("document.getElementById('structure-boxes').value='0';document.getElementById('structure-bundles').value='1';document.getElementById('units-per-bundle').value='';document.getElementById('structure-bundles').dispatchEvent(new Event('input',{bubbles:true}))");
+        check(await script("document.getElementById('calc').textContent.includes('Informe quantidade')")=="true","Fardos exigem conteúdo válido");
+        check(await script("!window.lastScriptError")=="true","Fluxos sem erros JavaScript");
     }
 }
 
