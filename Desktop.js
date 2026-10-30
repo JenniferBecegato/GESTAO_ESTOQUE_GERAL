@@ -11,8 +11,70 @@
     let lastSavedProduct=null,editingProduct=null,scanTimer;
     let financeMonth=new Date().getMonth()+1,financeYear=new Date().getFullYear();
     const purchaseHistoryFilters={start:'',end:'',product:'',store:''};
+    let purchaseHistoryDefaultMonth=true,purchaseHistoryMonth='';
+    function updatePurchaseHistoryMonth(now=new Date()){
+        const month=localDate(new Date(now.getFullYear(),now.getMonth(),1)).slice(0,7);
+        if(!purchaseHistoryDefaultMonth||purchaseHistoryMonth===month)return false;
+        purchaseHistoryFilters.start=month+'-01';
+        purchaseHistoryFilters.end=localDate(new Date(now.getFullYear(),now.getMonth()+1,0));
+        purchaseHistoryMonth=month;
+        return true;
+    }
+    const movementHistoryFilters={start:'',end:'',product:'',person:'',sector:'',type:'Todos'};
+    let movementHistoryDefaultMonth=true,movementHistoryMonth='';
+    function updateMovementHistoryMonth(now=new Date()){
+        const month=localDate(new Date(now.getFullYear(),now.getMonth(),1)).slice(0,7);
+        if(!movementHistoryDefaultMonth||movementHistoryMonth===month)return false;
+        movementHistoryFilters.start=month+'-01';
+        movementHistoryFilters.end=localDate(new Date(now.getFullYear(),now.getMonth()+1,0));
+        movementHistoryMonth=month;
+        return true;
+    }
     const $ = id => document.getElementById(id);
     const localDate = d => new Date(d).toLocaleDateString('sv-SE');
+
+    function monthlySpendingComparison(movements,now=new Date()){
+        const y=now.getFullYear(),m=now.getMonth();
+        const start=localDate(new Date(y,m,1)),end=localDate(new Date(y,m+1,0));
+        const previousStart=localDate(new Date(y,m-1,1));
+        const previousEnd=localDate(new Date(y,m,0));
+        function total(from,to){
+            const rows=movements.filter(x=>x.Type==='Entrada'&&x.PurchaseDate.slice(0,10)>=from&&x.PurchaseDate.slice(0,10)<=to);
+            return {value:rows.reduce((n,x)=>n+(x.Total??0),0),unknown:rows.filter(x=>x.Total==null).length};
+        }
+        const current=total(start,end),previous=total(previousStart,previousEnd),difference=current.value-previous.value;
+        return {start,end,previousStart,previousEnd,current,previous,difference,percent:previous.value===0?null:difference/previous.value*100};
+    }
+
+    function spendingComparisonMarkup(chart=false){
+        const now=new Date(),c=monthlySpendingComparison(inventory.Movements,now);
+        const monthName=date=>{const name=date.toLocaleDateString('pt-BR',{month:'long'});return name.charAt(0).toUpperCase()+name.slice(1);};
+        const currentMonth=monthName(now),previousMonth=monthName(new Date(now.getFullYear(),now.getMonth()-1,1));
+        const direction=c.difference>0?'Aumento':c.difference<0?'Redução':'Sem alteração';
+        const percent=c.percent===null?'Sem base percentual no mês anterior':Math.abs(c.percent).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%';
+        return '<h2 style="font-size:16px;font-weight:400;margin:0 0 10px">Comparação com o mês anterior</h2><strong style="display:block;font-size:20px">'+esc(direction+': '+referenceMoney(Math.abs(c.difference))+' • '+percent)+'</strong><p class="muted small">'+esc(currentMonth+': '+referenceMoney(c.current.value)+' • '+previousMonth+': '+referenceMoney(c.previous.value))+'</p>'+(chart?barras([[currentMonth,c.current.value],[previousMonth,c.previous.value]]):'');
+    }
+    function addSpendingComparison(container,chart=false){
+        if(!container)return;
+        const panel=document.createElement('div');
+        panel.className=(chart?'panel':'card')+' monthly-comparison financial-info-card';
+        function draw(){
+            panel.innerHTML=spendingComparisonMarkup(chart);
+            const c=monthlySpendingComparison(inventory.Movements);
+            const missing=c.current.unknown+c.previous.unknown;
+            const explanation='A comparação considera todas as compras registradas no mês atual e todas as compras do mês anterior, do primeiro ao último dia de cada mês, sem limitar pelo dia atual. Os valores seguem a data da compra. A diferença em reais é o gasto atual menos o anterior; o percentual usa o gasto anterior como base. '+(c.percent===null?'Sem gasto no período anterior, não há base para calcular o percentual. ':'')+(missing?'Totais parciais: '+missing+' compra(s) sem custo informado.':'');
+            adicionaAjuda(panel,explanation);
+            panel.querySelector('.info-btn').setAttribute('aria-label','Informações da comparação mensal');
+        }
+        draw();
+        container.append(panel);
+        let date=localDate(new Date());
+        const timer=setInterval(()=>{
+            if(!panel.isConnected){clearInterval(timer);return;}
+            const today=localDate(new Date());
+            if(today!==date){date=today;draw();}
+        },60000);
+    }
     function request(type,payload) {
         return new Promise((resolve,reject) => {
             const id = String(++sequence);
@@ -221,8 +283,8 @@
         group.className='code-entry';input.before(group);generate.type='button';generate.id='generate-barcode';generate.textContent='Gerar código';generate.title='Produto sem código de barras: gerar código interno único';
         generate.onclick=async()=>{generate.disabled=true;try{input.value=await request('generateCode');lastSavedProduct=null;input.dispatchEvent(new Event('change'));}catch(e){alert(e.message);}finally{generate.disabled=false;}};
         group.append(input,generate);
-        const print=document.createElement('button');print.type='button';print.id='print-saved-label';print.className='action secondary';print.textContent='Imprimir etiqueta';print.hidden=true;print.onclick=()=>openLabel(lastSavedProduct);button.after(print);
-        input.addEventListener('input',()=>{lastSavedProduct=null;print.hidden=true;});
+
+        input.addEventListener('input',()=>{lastSavedProduct=null;});
         document.querySelector('label[for="un"]').htmlFor='control-unit';
         const unitChoice=document.createElement('select');unitChoice.id='control-unit';
         for(const unit of ['unidade','pacote','fardo','caixa'])unitChoice.add(new Option(unit[0].toUpperCase()+unit.slice(1),unit));
@@ -395,7 +457,7 @@
             const summaryFor=tab=>{const summary=document.createElement('div');summary.className='pdf-filter-summary';summary.textContent=`Relatório: ${tab}\nPeríodo: ${date(inicioRel)} a ${date(fimRel)}    •    Local: ${localRel||'Todos os locais'}    •    Categoria: ${categoriaRel||'Todas as categorias'}`;return summary;};
             const previous=abaRel,main=document.querySelector('main'),scrollY=main.scrollTop,root=document.createElement('div');root.id='all-reports-pdf';
             try{
-                for(const tab of ['Resumo','Gastos','Economia','Consumo','Estoque','Preços','Locais de compra']){
+                for(const tab of ['Resumo','Gastos','Consumo','Estoque','Preços','Locais de compra','Comparação mensal']){
                     abaRel=tab;desenhaRelatorio();
                     const section=document.createElement('section');section.className='pdf-report-section';section.dataset.report=tab;
                     const brand=document.querySelector('.bar').cloneNode(true);brand.querySelector('.badge-top')?.remove();
@@ -420,7 +482,7 @@
         if(!ps.length) return '<table><tr><th>Produto</th><th>Categoria</th><th>Saldo</th><th>Mínimo</th><th>Situação</th></tr><tr><td colspan="5">Nenhum produto encontrado.</td></tr></table>';
         const container=document.createElement('div');container.innerHTML=referenceTable(ps);
         const rows=[...container.querySelectorAll('tr')];if(current!==0)rows[0].insertAdjacentHTML('beforeend','<th>Ações</th>');
-        rows.slice(1).forEach((row,i)=>{const product=inventory.Products.find(p=>p.Id===ps[i].id);if(product){if(product.Balance===0){const status=document.createElement('span');status.textContent='Em falta';status.style.cssText='display:inline-block;color:#b42318;background:#fee4e2;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}else if(product.Balance>product.Minimum){const status=document.createElement('span');status.textContent='Normal';status.style.cssText='display:inline-block;color:#067647;background:#dcfae6;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}row.cells[2].textContent=stockText(product);if(current===1){const code=document.createElement('small');code.className='product-barcode';code.textContent='Código: '+product.Code;code.style.cssText='display:block;margin-top:4px;font:12px Consolas,monospace;overflow-wrap:anywhere';row.cells[0].append(code);}row.cells[3].textContent=product.Minimum+' '+product.Unit;}if(current===0)return;const cell=document.createElement('td');cell.innerHTML=`<div class="product-actions"><button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button><button type="button" class="label-action product-icon" data-edit-product="${esc(ps[i].id)}" title="Editar produto" aria-label="Editar ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5Z M14 5l5 5"/></svg></button><button type="button" class="label-action product-icon product-delete" data-delete-product="${esc(ps[i].id)}" title="Excluir produto" aria-label="Excluir ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>`;if(current!==1)cell.innerHTML=`<button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button>`;row.append(cell);});
+        rows.slice(1).forEach((row,i)=>{const product=inventory.Products.find(p=>p.Id===ps[i].id);if(product){if(product.Balance===0){const status=document.createElement('span');status.textContent='Em falta';status.style.cssText='display:inline-block;color:#b42318;background:#fee4e2;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}else if(product.Balance>product.Minimum){const status=document.createElement('span');status.textContent='Normal';status.style.cssText='display:inline-block;color:#067647;background:#dcfae6;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}row.cells[2].textContent=stockText(product);if(current===1){const code=document.createElement('small');code.className='product-barcode';code.textContent='Código: '+product.Code;code.style.cssText='display:block;margin-top:4px;font:12px Consolas,monospace;overflow-wrap:anywhere';row.cells[0].append(code);}row.cells[3].textContent=product.Minimum+' '+product.Unit;}if(current===0)return;const cell=document.createElement('td');cell.innerHTML=`<div class="product-actions"><button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button><button type="button" class="label-action product-icon" data-edit-product="${esc(ps[i].id)}" title="Editar produto" aria-label="Editar ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5Z M14 5l5 5"/></svg></button><button type="button" class="label-action product-icon product-delete" data-delete-product="${esc(ps[i].id)}" title="Excluir produto" aria-label="Excluir ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>`;if(current!==1)cell.innerHTML=``;row.append(cell);});
         return container.innerHTML;
     };
     render=function() {
@@ -450,7 +512,6 @@
                 financial.querySelector('h2').textContent='Resumo financeiro';
                 const explanations=[
                     ['Gasto nas compras','Soma dos valores pagos nas compras do mês e ano selecionados, pela data da compra. Considera os descontos e acréscimos registrados em cada item. Compras sem custo informado não entram na soma e são indicadas na observação abaixo.'],
-                    ['Economia comparada à referência','Compara o valor de referência com o valor pago, para a mesma quantidade e unidade: referência total menos valor pago. Só entram compras com referência e custo informados. Resultado positivo indica economia; negativo indica custo adicional. A referência por unidade deve corresponder à unidade de controle do produto.'],
                     ['Local com maior gasto','Estabelecimento em que foi gasto o maior valor em compras no mês e ano selecionados. Considera apenas compras com custo informado. É o local da compra, não o local onde o produto é armazenado.']
                 ];
                 financial.querySelectorAll('.card').forEach((card,i)=>{
@@ -470,13 +531,13 @@
                     const key=financeYear+'-'+String(financeMonth).padStart(2,'0'),items=compras.filter(c=>c.data.startsWith(key));
                     const refs=items.filter(c=>c.ref!==null&&c.valor!==null),totals={};
                     items.forEach(c=>{if(c.valor!==null)totals[c.local]=(totals[c.local]||0)+c.valor;});
-                    const top=Object.entries(totals).sort((a,b)=>b[1]-a[1])[0],cards=financial.querySelectorAll('.card b');
+                    const top=Object.entries(totals).sort((a,b)=>b[1]-a[1])[0],cards=financial.querySelectorAll('.card:not(.monthly-comparison) b');
                     cards[0].textContent=referenceMoney(items.reduce((sum,c)=>sum+(c.valor??0),0));
-                    cards[1].textContent=refs.length?referenceMoney(refs.reduce((sum,c)=>sum+c.ref-c.valor,0)):'Não calculada';
-                    cards[2].textContent=top?.[0]||'Sem dados';cards[2].title=top?referenceMoney(top[1]):'Nenhuma compra com valor informado neste período';
-                    financial.querySelector('p.muted').textContent=`Período: ${months[financeMonth-1]} de ${financeYear} (data da compra). ${items.length} item(ns) de compra; ${items.filter(c=>c.unknown).length} sem custo conhecido. Economia calculada em ${refs.length} de ${items.length} itens com referência. Valores negativos indicam custo adicional.`;
+                    cards[1].textContent=top?.[0]||'Sem dados';cards[1].title=top?referenceMoney(top[1]):'Nenhuma compra com valor informado neste período';
+                    financial.querySelector('p.muted').textContent=`Período: ${months[financeMonth-1]} de ${financeYear} (data da compra). ${items.length} item(ns) de compra; ${items.filter(c=>c.unknown).length} sem custo conhecido.`;
                 }
                 $('finance-period').onchange=updateFinance;updateFinance();
+                addSpendingComparison(financial.querySelector('.grid'));
             }
         }
         if(current===2) {
@@ -543,21 +604,45 @@
         bar.append(heading,toggle);panel.replaceChildren(bar,content);update();
     }
     function enhanceHistory() {
+        updateMovementHistoryMonth();
         const note=document.querySelector('#page .panel p.muted');
         if(note) note.textContent='Movimentações registradas no computador. Consulte por período, produto, tipo, responsável e setor.';
         const panel=document.querySelector('#page .panel'); if(!panel)return;
         const filters=document.createElement('details'); filters.className='history-filter-controls';filters.style.marginBottom='16px';
         filters.innerHTML='<summary style="cursor:pointer;color:#20366c">Filtrar movimentações</summary><div class="filtergrid"><div><label>Data inicial</label><input type="date" id="history-start"></div><div><label>Data final</label><input type="date" id="history-end"></div><div><label>Tipo</label><select id="history-type"><option>Todos</option><option>Entrada</option><option>Saída</option><option>Ajuste +</option><option>Ajuste −</option></select></div><div><label>Produto</label><input id="history-product"></div><div><label>Responsável</label><input id="history-person"></div><div><label>Setor</label><input id="history-sector"></div></div>';
         panel.insertBefore(filters,panel.querySelector('table'));
+        const movementFields={start:'history-start',end:'history-end',type:'history-type',product:'history-product',person:'history-person',sector:'history-sector'};
+        for(const [key,id] of Object.entries(movementFields))$(id).value=movementHistoryFilters[key];
+        const clear=document.createElement('button');clear.type='button';clear.className='action secondary';clear.id='history-clear';clear.textContent='Limpar filtros';filters.append(clear);
         function filter() {
+            for(const [key,id] of Object.entries(movementFields))movementHistoryFilters[key]=$(id).value;
             const data=inventory.Movements.filter(m=>(!$('history-start').value||m.Date.slice(0,10)>=$('history-start').value)&&(!$('history-end').value||m.Date.slice(0,10)<=$('history-end').value)&&($('history-type').value==='Todos'||m.Type===$('history-type').value)&&m.ProductName.toLowerCase().includes($('history-product').value.toLowerCase())&&m.Person.toLowerCase().includes($('history-person').value.toLowerCase())&&m.Sector.toLowerCase().includes($('history-sector').value.toLowerCase())).sort((a,b)=>b.Date.localeCompare(a.Date));
             panel.querySelector('table').outerHTML='<table><tr><th>Data</th><th>Tipo</th><th>Produto</th><th>Quantidade</th><th>Responsável / setor</th></tr>'+data.map(m=>`<tr><td>${esc(new Date(m.Date).toLocaleString('pt-BR'))}</td><td>${esc(m.Type)}</td><td>${esc(m.ProductName)}</td><td>${m.Converted} ${esc(m.Unit)}${m.Parts?.length?`<small style="display:block">${esc(m.Package)}</small>`:''}</td><td>${esc(m.Person)} / ${esc(m.Sector)}</td></tr>`).join('')+'</table>';
         }
-        filters.querySelectorAll('input,select').forEach(c=>c.addEventListener('input',filter));filter();
+        filters.querySelectorAll('input,select').forEach(c=>c.addEventListener('input',()=>{
+            if(c.id==='history-start'||c.id==='history-end')movementHistoryDefaultMonth=false;
+            filter();
+        }));
+        clear.onclick=()=>{
+            filters.querySelectorAll('input,select').forEach(c=>c.value=c.id==='history-type'?'Todos':'');
+            movementHistoryDefaultMonth=true;movementHistoryMonth='';updateMovementHistoryMonth();
+            $('history-start').value=movementHistoryFilters.start;
+            $('history-end').value=movementHistoryFilters.end;
+            filter();
+        };filter();
+        const monthTimer=setInterval(()=>{
+            if(!filters.isConnected){clearInterval(monthTimer);return;}
+            if(updateMovementHistoryMonth()){
+                $('history-start').value=movementHistoryFilters.start;
+                $('history-end').value=movementHistoryFilters.end;
+                filter();
+            }
+        },60000);
         enhancePurchaseHistory();
         collapsibleHistory(panel,'movement-history-content');
     }
     function enhancePurchaseHistory(){
+        updatePurchaseHistoryMonth();
         const panel=[...page.querySelectorAll('.panel')].find(p=>p.querySelector('h2')?.textContent==='Histórico de compras por local');if(!panel)return;
         const controls=document.createElement('div');controls.className='history-filter-controls';controls.style.marginBottom='16px';
         controls.innerHTML='<div class="filtergrid"><div><label for="purchases-start">Data inicial da compra</label><input type="date" id="purchases-start"></div><div><label for="purchases-end">Data final da compra</label><input type="date" id="purchases-end"></div><div><label for="purchases-store">Local da compra</label><select id="purchases-store"><option value="">Todos os locais</option></select></div><div><label for="purchases-product">Produto ou código</label><input id="purchases-product" placeholder="Digite para pesquisar"></div></div><button type="button" class="action secondary" id="purchases-clear">Limpar filtros</button>';
@@ -575,15 +660,32 @@
                 return (!f.start||m.PurchaseDate.slice(0,10)>=f.start)&&(!f.end||m.PurchaseDate.slice(0,10)<=f.end)&&(!f.store||(m.Store||'Não informado')===f.store)&&search.toLocaleLowerCase('pt-BR').includes(query);
             }).sort((a,b)=>b.PurchaseDate.localeCompare(a.PurchaseDate)||b.Date.localeCompare(a.Date));
             const table=document.createElement('table');table.id='purchases-history-table';
-            table.innerHTML='<thead><tr><th>Data</th><th>Produto</th><th>Local da compra</th><th>Quantidade</th><th>Valor</th><th>Economia</th></tr></thead><tbody>'+rows.map(m=>`<tr><td>${esc(m.PurchaseDate.slice(0,10).split('-').reverse().join('/'))}</td><td>${esc(m.ProductName)}</td><td>${esc(m.Store||'Não informado')}</td><td>${m.Converted} ${esc(m.Unit)}</td><td>${m.Total===null?'Custo desconhecido':referenceMoney(m.Total)}</td><td>${m.Total===null||m.ReferenceTotal===null?'Não calculada':referenceMoney(m.ReferenceTotal-m.Total)}</td></tr>`).join('')+(rows.length?'':'<tr><td colspan="6">Nenhuma compra encontrada para os filtros selecionados.</td></tr>')+'</tbody>';
+            table.innerHTML='<thead><tr><th>Data</th><th>Produto</th><th>Local da compra</th><th>Quantidade</th><th>Valor</th></tr></thead><tbody>'+rows.map(m=>`<tr><td>${esc(m.PurchaseDate.slice(0,10).split('-').reverse().join('/'))}</td><td>${esc(m.ProductName)}</td><td>${esc(m.Store||'Não informado')}</td><td>${m.Converted} ${esc(m.Unit)}</td><td>${m.Total===null?'Custo desconhecido':referenceMoney(m.Total)}</td></tr>`).join('')+(rows.length?'':'<tr><td colspan="5">Nenhuma compra encontrada para os filtros selecionados.</td></tr>')+'</tbody>';
             panel.querySelector('table').replaceWith(table);
             note.textContent=invalid?'A data inicial deve ser anterior ou igual à data final.':`${rows.length} item(ns) de compra • Total conhecido: ${referenceMoney(rows.reduce((sum,m)=>sum+(m.Total??0),0))}. Filtro pela data da compra.`;
             note.style.color=invalid?'#a33232':'';
             const date=s=>s?s.split('-').reverse().join('/'):'Sem limite';
             printSummary.textContent=`Filtros das compras: ${date(f.start)} a ${date(f.end)} • Local: ${f.store||'Todos os locais'} • Produto/código: ${f.product||'Todos os produtos'}`;
         }
-        controls.querySelectorAll('input,select').forEach(c=>c.addEventListener('input',apply));
-        $('purchases-clear').onclick=()=>{controls.querySelectorAll('input,select').forEach(c=>c.value='');apply();};apply();
+        controls.querySelectorAll('input,select').forEach(c=>c.addEventListener('input',()=>{
+            if(c.id==='purchases-start'||c.id==='purchases-end')purchaseHistoryDefaultMonth=false;
+            apply();
+        }));
+        $('purchases-clear').onclick=()=>{
+            controls.querySelectorAll('input,select').forEach(c=>c.value='');
+            purchaseHistoryDefaultMonth=true;purchaseHistoryMonth='';updatePurchaseHistoryMonth();
+            $('purchases-start').value=purchaseHistoryFilters.start;
+            $('purchases-end').value=purchaseHistoryFilters.end;
+            apply();
+        };apply();
+        const monthTimer=setInterval(()=>{
+            if(!controls.isConnected){clearInterval(monthTimer);return;}
+            if(updatePurchaseHistoryMonth()){
+                $('purchases-start').value=purchaseHistoryFilters.start;
+                $('purchases-end').value=purchaseHistoryFilters.end;
+                apply();
+            }
+        },60000);
         collapsibleHistory(panel,'purchase-history-content');
     }
     function editProduct(id){
@@ -612,7 +714,7 @@
         const minimum=Number($('min').value);
         if(!code||!name||!unit||!$('min').value.trim()||!Number.isSafeInteger(minimum)||minimum<0)throw new Error('Preencha código, nome, medida e mínimo inteiro não negativo.');
         const p={...editingProduct,Code:code,Name:name,Unit:unit,Category:$('cat').value,ControlLevels:[],MinimumPackageQuantity:null,Minimum:minimum,Target:Math.max(minimum,editingProduct?.Target??minimum),Location:$('local').value.trim(),Active:true,Packages:editingProduct?.Packages??[]};
-        sync(await request('saveProduct',p));if(editingProduct){editingProduct=null;show(1);return;}lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('print-saved-label').hidden=false;$('msg').textContent='Produto cadastrado. Você já pode imprimir a etiqueta. Registre o saldo inicial em Entrada.';
+        sync(await request('saveProduct',p));if(editingProduct){editingProduct=null;show(1);return;}lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('msg').textContent='Produto cadastrado. Registre o saldo inicial em Entrada; as etiquetas serão apresentadas após salvar a entrada.';
     });};
     buscar=function(){
         const code=$('codigo').value.trim(); let p=produtos.find(x=>x.code===code||x.aliases.includes(code)||x.packages.some(pk=>pk.Code&&pk.Code===code));
@@ -765,9 +867,16 @@
         $('msg').textContent=`Movimentação registrada. Novo saldo: ${updated.saldo} ${updated.un}.`;
         $('formmov').classList.add('hide');$('produto').innerHTML='';selected=null;
         $('codigo').value='';requestAnimationFrame(()=>$('codigo')?.focus());
+        if(m.Type==='Entrada'){
+            const entry=inventory.Movements.at(-1);
+            if(entry?.ProductId===id&&entry.Type==='Entrada'){
+                await openLabel(id,null,'Entrada salva. Confira as etiquetas dos produtos recebidos antes de gerar o PDF.',entry);
+            }
+        }
     });};
     desenhaRelatorio=function(){
         referenceReports();
+        if(abaRel==='Comparação mensal')addSpendingComparison($('relconteudo'),true);
         dataNotice(document.querySelector('#page > .notice'),'Os relatórios utilizam os dados salvos no computador. Selecione o período, o local e a categoria para consultar.');
         const filterNote=document.querySelector('#page .section-note');if(filterNote)filterNote.textContent='Datas filtram compras e saídas. Categoria também filtra o estoque atual. O local filtra somente compras, pois não é atributo das saídas nem do saldo. Estoque é uma posição atual.';
         const replacements=[['Saldo atual ao custo ilustrativo','Saldo atual ao custo médio'],['Registros de exemplo','Itens registrados'],['Valores ilustrativos das saídas.','Custo médio registrado em cada saída.'],['Posição ilustrativa, não é filtrada por data ou local de compra.','Posição atual, não é filtrada por data ou local de compra.']];
@@ -782,9 +891,9 @@
         }
         for(const row of document.querySelectorAll('#relconteudo tbody tr')) {
             const cells=[...row.cells];
-            if(abaRel==='Estoque'&&cells.length===7){const p=estoqueDemo.find(p=>p.nome===cells[0].textContent);if(p?.custo===null&&row.closest('.panel')?.querySelector('h2')?.textContent.startsWith('Posição atual')){cells[3].textContent='Desconhecido';cells[4].textContent=p.q===0?referenceMoney(0):'Desconhecido';}}
+            if(abaRel==='Estoque'&&cells.length===5){const p=estoqueDemo.find(p=>p.nome===cells[0].textContent);if(p?.custo===null&&row.closest('.panel')?.querySelector('h2')?.textContent.startsWith('Posição atual')){cells[3].textContent='Desconhecido';cells[4].textContent=p.q===0?referenceMoney(0):'Desconhecido';}}
             if(abaRel==='Consumo'&&cells.length===6){const m=saidasDemo.find(m=>m.nome===cells[1].textContent&&m.data===cells[0].textContent);if(m?.custo===null)cells[5].textContent='Desconhecido';}
-            if(['Gastos','Economia','Locais de compra'].includes(abaRel)&&cells.length===7){const m=visiblePurchases.find(m=>m.data===cells[0].textContent&&m.nome===cells[1].textContent&&m.local===cells[2].textContent);if(m?.unknown)cells[4].textContent='Desconhecido';}
+            if(['Gastos','Locais de compra'].includes(abaRel)&&cells.length===5){const m=visiblePurchases.find(m=>m.data===cells[0].textContent&&m.nome===cells[1].textContent&&m.local===cells[2].textContent);if(m?.unknown)cells[4].textContent='Desconhecido';}
             if(abaRel==='Preços'&&cells.length===6){const m=visiblePurchases.find(m=>m.data===cells[0].textContent&&m.nome===cells[1].textContent&&m.local===cells[2].textContent);if(m?.unknown){cells[4].textContent='Desconhecido';cells[5].textContent='Desconhecido';}}
         }
     };
