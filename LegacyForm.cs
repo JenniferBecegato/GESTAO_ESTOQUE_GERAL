@@ -184,13 +184,13 @@ public partial class LegacyForm : Form
     private void ProductEditor(FlowLayoutPanel body, Product? original = null, string codeValue = "")
     {
         var p = original == null ? new Product() : JsonSerializer.Deserialize<Product>(JsonSerializer.Serialize(original))!;
-        var code = TextField(original?.Code ?? codeValue); var name = TextField(p.Name); var unit = TextField(p.Unit); var location = TextField(p.Location);
+        var code = TextField(original?.Code ?? codeValue); var name = TextField(p.Name); var unit = TextField(p.Unit);
         var cat = Combo(categories,true); cat.Text = p.Category;
         var min = Number(p.Minimum); var target = Number(p.Target); var reference = Number(p.Reference ?? 0,4);
         var hasRef = new CheckBox { Text = "Usar preço de referência", Checked = p.Reference.HasValue, Dock = DockStyle.Top };
         var origin = TextField(p.ReferenceSource); var refDate = new DateTimePicker { Value = p.ReferenceDate, Format = DateTimePickerFormat.Short, Dock = DockStyle.Top };
         var active = new CheckBox { Text = "Produto ativo", Checked = p.Active, Dock = DockStyle.Top };
-        var f = Fields(); Field(f,"Código de barras ou interno *",code); Field(f,"Nome do produto *",name); Field(f,"Categoria",cat); Field(f,"Unidade de controle *",unit); Field(f,"Estoque mínimo",min); Field(f,"Estoque desejado",target); Field(f,"Local de armazenamento",location); Field(f,"Situação",active); Field(f,"Referência opcional",hasRef); Field(f,"Preço de referência / unidade (R$)",reference); Field(f,"Origem da referência",origin); Field(f,"Data da referência",refDate); Add(body,f);
+        var f = Fields(); Field(f,"Código de barras ou interno *",code); Field(f,"Nome do produto *",name); Field(f,"Categoria",cat); Field(f,"Unidade de controle *",unit); Field(f,"Estoque mínimo",min); Field(f,"Estoque desejado",target); Field(f,"Situação",active); Field(f,"Referência opcional",hasRef); Field(f,"Preço de referência / unidade (R$)",reference); Field(f,"Origem da referência",origin); Field(f,"Data da referência",refDate); Add(body,f);
         Add(body, Label("Embalagens e códigos adicionais",15,true));
         var packs = new DataGridView { Height = 170, BackgroundColor = Color.White, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowHeadersVisible = false, AllowUserToAddRows = true, AllowUserToDeleteRows = true };
         packs.Columns.Add("Name","Embalagem (ex.: Fardo)"); packs.Columns.Add("Code","Código de barras (opcional)"); packs.Columns.Add("Factor","Unidades por embalagem");
@@ -200,7 +200,7 @@ public partial class LegacyForm : Form
         Add(body,Actions(Button("Salvar produto", () => Guard(() =>
         {
             packs.EndEdit();
-            p.Code = code.Text.Trim(); p.Name = name.Text.Trim(); p.Unit = unit.Text.Trim(); p.Category = cat.Text.Trim(); p.Location = location.Text.Trim(); p.Minimum = min.Value; p.Target = target.Value; p.Active = active.Checked;
+            p.Code = code.Text.Trim(); p.Name = name.Text.Trim(); p.Unit = unit.Text.Trim(); p.Category = cat.Text.Trim(); p.Minimum = min.Value; p.Target = target.Value; p.Active = active.Checked;
             p.Reference = hasRef.Checked ? reference.Value : null; p.ReferenceSource = origin.Text.Trim(); p.ReferenceDate = refDate.Value.Date;
             p.Packages = [];
             foreach(DataGridViewRow r in packs.Rows)
@@ -223,19 +223,18 @@ public partial class LegacyForm : Form
         product.Items.AddRange(state.Products.Where(p => p.Active).OrderBy(p => p.Name).Select(p => new Choice(p.Id,p.Name + " • " + p.Code)).Cast<object>().ToArray());
         var pack = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top };
         var quantity = Number(1); quantity.Minimum = 1;
-        var person = TextField(); var sector = TextField(); var note = TextField();
+        var note = TextField();
         var date = new DateTimePicker { Value = DateTime.Now, Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy HH:mm", Dock = DockStyle.Top };
-        var purchaseDate = new DateTimePicker { Value = DateTime.Today, Format = DateTimePickerFormat.Short, Dock = DockStyle.Top };
         var storeName = new ComboBox { Dock = DockStyle.Top }; storeName.Items.AddRange(state.Movements.Select(m => m.Store).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Cast<object>().ToArray());
-        var supplier = TextField(); var invoice = TextField();
+        var supplier = TextField();
         var priced = new CheckBox { Text = "Preço conhecido (desmarque para saldo inicial sem custo)", Checked = true, AutoSize = true, Dock = DockStyle.Top };
-        var price = Number(0,4); var discount = Number(0,2); var addition = Number(0,2); var reference = Number(0,4);
+        var price = Number(0,4); var reference = Number(0,4);
         var refEnabled = new CheckBox { Text = "Comparar com referência", Dock = DockStyle.Top };
         var conversion = Label("Selecione um produto.",11,true); conversion.Height = 64; conversion.AutoSize = false;
-        var f = Fields(); Field(f,"Código / leitor",search); Field(f,"Produto (pesquisa pelo nome)",product); Field(f,"Quantidade *",quantity); Field(f,"Unidade movimentada",pack); Field(f,"Responsável *",person); Field(f,"Setor / destino",sector); Field(f,"Data do recebimento / retirada",date); Field(f,"Observação",note);
+        var f = Fields(); Field(f,"Código / leitor",search); Field(f,"Produto (pesquisa pelo nome)",product); Field(f,"Quantidade *",quantity); Field(f,"Unidade movimentada",pack); Field(f,"Data do recebimento / retirada",date); Field(f,"Observação",note);
         if(entry)
         {
-            Field(f,"Local da compra * (quando houver preço)",storeName); Field(f,"Data da compra",purchaseDate); Field(f,"Fornecedor (se diferente)",supplier); Field(f,"Nota / comprovante",invoice); Field(f,"Tipo de entrada",priced); Field(f,"Preço por embalagem selecionada (R$)",price); Field(f,"Desconto deste item (R$)",discount); Field(f,"Acréscimo deste item (R$)",addition); Field(f,"Referência opcional",refEnabled); Field(f,"Referência por unidade de controle (R$)",reference);
+            Field(f,"Local da compra * (quando houver preço)",storeName); Field(f,"Fornecedor (se diferente)",supplier); Field(f,"Tipo de entrada",priced); Field(f,"Preço por embalagem selecionada (R$)",price); Field(f,"Referência opcional",refEnabled); Field(f,"Referência por unidade de controle (R$)",reference);
         }
         Add(body,f); Add(body,conversion);
         var cart = new List<Movement>(); var cartGrid = Grid(160);
@@ -244,7 +243,7 @@ public partial class LegacyForm : Form
         {
             if(Selected() is not {} p || pack.SelectedItem is not PackChoice pk) return;
             var converted = quantity.Value * pk.Factor;
-            conversion.Text = $"Saldo: {Qty(p.Balance)} {p.Unit} • Local: {p.Location}\nEquivale a {Qty(converted)} {p.Unit}" + (entry && priced.Checked ? $" • Total: {Money(quantity.Value * price.Value - discount.Value + addition.Value)} • Custo / unidade: {Money((quantity.Value * price.Value - discount.Value + addition.Value)/converted)}" : "");
+            conversion.Text = $"Saldo: {Qty(p.Balance)} {p.Unit} • Local: {p.Location}\nEquivale a {Qty(converted)} {p.Unit}" + (entry && priced.Checked ? $" • Total: {Money(quantity.Value * price.Value)} • Custo / unidade: {Money((quantity.Value * price.Value)/converted)}" : "");
         }
         void SelectProduct()
         {
@@ -273,13 +272,12 @@ public partial class LegacyForm : Form
         {
             var p = Selected() ?? throw new ArgumentException("Selecione o produto.");
             var pk = pack.SelectedItem as PackChoice ?? throw new ArgumentException("Selecione a embalagem.");
-            decimal total = quantity.Value * price.Value - discount.Value + addition.Value;
-            if(string.IsNullOrWhiteSpace(person.Text)) throw new ArgumentException("Informe o responsável.");
+            decimal total = quantity.Value * price.Value;
             if(date.Value > DateTime.Now.AddMinutes(1)) throw new ArgumentException("A data da movimentação não pode estar no futuro.");
-            if(entry && priced.Checked && (string.IsNullOrWhiteSpace(storeName.Text) || total < 0 || purchaseDate.Value.Date > date.Value.Date)) throw new ArgumentException("Informe o local da compra, total válido e data de compra anterior ou igual ao recebimento.");
-            return new Movement { ProductId = p.Id, Type = entry ? "Entrada" : "Saída", Date = date.Value, PurchaseDate = purchaseDate.Value.Date, Package = pk.Name, Quantity = quantity.Value, Factor = pk.Factor, Converted = quantity.Value * pk.Factor, Person = person.Text.Trim(), Sector = sector.Text.Trim(), Note = note.Text.Trim(), Store = entry && priced.Checked ? storeName.Text.Trim() : "", Supplier = supplier.Text.Trim(), Invoice = invoice.Text.Trim(), Total = entry && priced.Checked ? total : null, ReferenceTotal = entry && priced.Checked && refEnabled.Checked ? reference.Value * quantity.Value * pk.Factor : null, ReferenceSource = p.ReferenceSource, ReferenceDate = refEnabled.Checked ? p.ReferenceDate : null, ProductName = p.Name, Category = p.Category, Unit = p.Unit };
+            if(entry && priced.Checked && (string.IsNullOrWhiteSpace(storeName.Text) || total < 0)) throw new ArgumentException("Informe o local da compra, total válido.");
+            return new Movement { ProductId = p.Id, Type = entry ? "Entrada" : "Saída", Date = date.Value, PurchaseDate = date.Value.Date, Package = pk.Name, Quantity = quantity.Value, Factor = pk.Factor, Converted = quantity.Value * pk.Factor, Note = note.Text.Trim(), Store = entry && priced.Checked ? storeName.Text.Trim() : "", Supplier = supplier.Text.Trim(), Total = entry && priced.Checked ? total : null, ReferenceTotal = entry && priced.Checked && refEnabled.Checked ? reference.Value * quantity.Value * pk.Factor : null, ReferenceSource = p.ReferenceSource, ReferenceDate = refEnabled.Checked ? p.ReferenceDate : null, ProductName = p.Name, Category = p.Category, Unit = p.Unit };
         }
-        void ShowCart() => cartGrid.DataSource = Table(["Produto","Quantidade","Embalagem","Total","Local","Nota"],cart.Select(m => new object?[] { m.ProductName,Qty(m.Converted) + " " + m.Unit,m.Package,Money(m.Total),m.Store,m.Invoice }));
+        void ShowCart() => cartGrid.DataSource = Table(["Produto","Quantidade","Embalagem","Total","Local"],cart.Select(m => new object?[] { m.ProductName,Qty(m.Converted) + " " + m.Unit,m.Package,Money(m.Total),m.Store }));
         if(entry)
         {
             Add(body,Actions(Button("Adicionar item à compra",() => Guard(() =>
@@ -289,7 +287,7 @@ public partial class LegacyForm : Form
                 cart.Add(m); ShowCart();
             }),true),Button("Remover item selecionado",() => { if(cartGrid.CurrentRow is {} row && row.Index < cart.Count) { cart.RemoveAt(row.Index); ShowCart(); } },true)));
             Add(body,cartGrid);
-            Add(body,Notice("Para compra com vários produtos, adicione cada item e confirme ao final. Desconto e acréscimo são valores atribuídos ao item; distribua frete/desconto da nota uma única vez entre os itens."));
+            Add(body,Notice("Para compra com vários produtos, adicione cada item e confirme ao final. Informe o valor pago por cada item."));
         }
         Add(body,Actions(Button(entry ? "Confirmar entrada / compra" : "Confirmar saída", () => Guard(() =>
         {
@@ -300,7 +298,7 @@ public partial class LegacyForm : Form
             MessageBox.Show(this,"Movimentação registrada e salva.","Estoque",MessageBoxButtons.OK,MessageBoxIcon.Information); Navigate(current);
         })),Button("Buscar código",Find,true)));
         product.SelectedIndexChanged += (_,_) => SelectProduct(); pack.SelectedIndexChanged += (_,_) => Update();
-        foreach(var n in new[] {quantity,price,discount,addition}) n.ValueChanged += (_,_) => Update(); priced.CheckedChanged += (_,_) => Update();
+        foreach(var n in new[] {quantity,price}) n.ValueChanged += (_,_) => Update(); priced.CheckedChanged += (_,_) => Update();
         search.KeyDown += (_,e) => { if(e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Guard(Find); } };
         if(product.Items.Count > 0) product.SelectedIndex = 0;
     }
