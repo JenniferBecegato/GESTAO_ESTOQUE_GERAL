@@ -6,16 +6,21 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>program_ico.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Projeto_original_*/**/*.cs;Layout_anterior_*/**/*.cs" />
     <EmbeddedResource Remove="Projeto_original_*/**/*;Layout_anterior_*/**/*" />
+    <Content Include="program_ico.ico" />
     <EmbeddedResource Include="logo.png" LogicalName="GESTAO_ESTOQUE_GERAL.logo.png" />
     <EmbeddedResource Include="Prototipo.html" />
     <EmbeddedResource Include="Desktop.js" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="output\" />
   </ItemGroup>
   <Target Name="ExcludeUnusedWpfWebView" BeforeTargets="ResolveAssemblyReferences">
     <ItemGroup>

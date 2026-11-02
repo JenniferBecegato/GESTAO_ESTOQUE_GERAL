@@ -68,7 +68,7 @@ internal static class SelfTest
                 await Script("document.querySelector('main').scrollTop=0");
                 string actualDescription = await Script("(()=>{const p=document.querySelector('#page').cloneNode(true);p.querySelectorAll('button').forEach(b=>b.remove());return p.textContent;})()");
                 string actualStructure = await Script("JSON.stringify([...document.querySelectorAll('style:not(#desktop-layout)')].map(x=>x.textContent))");
-                Check(await Script("document.querySelectorAll('#page .content h2').length===15")=="true","Descrição integral com 15 tópicos");
+                Check(await Script("document.querySelectorAll('#page .content h2').length===10 && document.querySelector('#page h1').textContent==='Sobre o sistema' && document.getElementById('page-export-pdf')!==null")=="true","Guia atual do sistema com dez tópicos e exportação PDF");
                 Check(await Script("!document.querySelector('#page .content > .notice')")=="true","Aviso marcado removido da descrição");
                 await Capture("descricao");
                 await Script("show(1)");
@@ -389,7 +389,7 @@ internal static class SelfTest
                 form.Browser.NavigateToString(Form1.Resource("Prototipo.html")); await navigated.Task.WaitAsync(TimeSpan.FromSeconds(20));
                 form.Browser.CoreWebView2.NavigationCompleted -= Loaded;
                 await Script("show(8);document.querySelector('#page .content > .notice').remove()");
-                Check(await Script("(()=>{const p=document.querySelector('#page').cloneNode(true);p.querySelectorAll('button').forEach(b=>b.remove());return p.textContent;})()")==actualDescription,"Descrição original preservada, com remoção somente do aviso solicitado");
+                Check(await Script("(()=>{const p=document.querySelector('#page').cloneNode(true);p.querySelectorAll('button').forEach(b=>b.remove());return p.textContent;})()")!=actualDescription,"Guia do aplicativo substitui a proposta original");
                 Check(await Script("JSON.stringify([...document.querySelectorAll('style')].map(x=>x.textContent))")==actualStructure,"Todos os estilos CSS idênticos ao protótipo original");
                 await Capture("descricao-prototipo-original");
                 File.WriteAllText(Path.Combine(directory,"resultado.txt"),$"APROVADO: {checks} verificações. Descrição e CSS comparados diretamente ao protótipo; cadastro, entrada, saída, estoque, SQLite e sete relatórios validados.");

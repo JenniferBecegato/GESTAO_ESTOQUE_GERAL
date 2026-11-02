@@ -8,6 +8,39 @@
     const referenceSearch = buscar;
     const referenceTable = table;
     const referenceMoney = dinheiro;
+    names[8]='Sobre o sistema';
+    function aboutSystem(){
+        return `<article class="content">${header('Sobre o sistema','Campos • Gestão de Estoque Geral — guia de uso')}
+<h2>1. Para que serve</h2>
+<p>Controle os materiais de uso interno da farmácia: cadastros, entradas, saídas, saldo disponível e itens que precisam de reposição. As operações funcionam localmente, sem depender de internet, e os dados são salvos automaticamente neste computador.</p>
+<h2>2. Cadastro e estoque mínimo</h2>
+<p>Em Produtos, consulte, cadastre ou edite nome, código, categoria, medida de controle e estoque mínimo. O produto começa com saldo zero; registre a quantidade disponível em Entrada. Saldo e mínimo usam a medida escolhida, como unidade, pacote, frasco ou rolo.</p>
+<p>A visão geral destaca produtos com saldo igual ou inferior ao mínimo. Saldo zero aparece como Em falta. Alterar a medida no cadastro muda sua identificação, sem converter o saldo, o custo ou as embalagens existentes; confira esses valores antes de salvar.</p>
+<h2>3. Códigos e leitura</h2>
+<p>Digite ou leia o código em Entrada ou Saída e confirme a busca. Um leitor configurado como teclado pode preencher esse campo. O atalho F8 seleciona o campo de código nessas telas. Também é possível buscar pelo nome.</p>
+<p>Quando o código não é encontrado, escolha Vincular a um produto existente ou Cadastrar novo produto. Códigos alternativos identificam o mesmo cadastro, sem alterar o saldo ou o histórico. Cada código deve ser único; vincular um código não confirma uma movimentação.</p>
+<h2>4. Caixas, fardos e unidades avulsas</h2>
+<p>Na movimentação, informe a quantidade de caixas ou fardos, o conteúdo de cada embalagem e as unidades avulsas. Confira o total calculado na medida de controle antes de confirmar. Por exemplo: 5 pacotes com 3 unidades acrescentam 15 unidades ao estoque de um produto controlado por unidade.</p>
+<p>O conteúdo da embalagem é específico de cada produto. Se a medida de controle já for pacote, cada pacote é um item do saldo. As quantidades movimentadas devem ser inteiras e positivas.</p>
+<h2>5. Entradas e saídas</h2>
+<p>A Entrada soma ao saldo e permite registrar informações da compra, como local e valor. A Saída desconta o material retirado para uso. Confira produto, quantidades e total antes da confirmação; o sistema bloqueia retiradas maiores que o saldo disponível.</p>
+<p>Cada confirmação registra a movimentação no histórico. Consulte os lançamentos para conferir as entradas e retiradas realizadas.</p>
+<h2>6. Histórico e consultas</h2>
+<p>O Histórico reúne as movimentações e o histórico de compras por local. Este quadro possui filtros próprios por datas da compra, local e produto ou código, incluindo códigos alternativos e de embalagem. Os totais acompanham a seleção; Limpar filtros volta a exibir todas as compras.</p>
+<h2>7. Relatórios e valores</h2>
+<p>Consulte Resumo, Gastos, Consumo, Estoque, Preços, Locais de compra e Comparação mensal. Datas filtram compras e saídas; categoria também filtra o estoque atual. O filtro de local se aplica somente às compras. O relatório de estoque mostra a posição atual.</p>
+<p>Compras sem custo informado são identificadas, e os totais financeiros podem ser parciais. A comparação com o mês anterior considera as compras de cada mês completo, pela data da compra. Quando o mês anterior não tem gasto, não há base para calcular o percentual.</p>
+<h2>8. Etiquetas</h2>
+<p>Em Produtos, use Imprimir etiqueta para abrir a prévia e gerar um PDF A4. Escolha se a etiqueta será colocada na embalagem ou em cada produto avulso: 5 pacotes com 3 unidades correspondem a 5 etiquetas de embalagem ou 15 etiquetas individuais.</p>
+<p>As etiquetas repetem o código do produto; ao ler esse código, confira a apresentação e a quantidade na movimentação. Gerar ou reimprimir etiquetas não altera o saldo. Ao imprimir o PDF, use papel A4 e tamanho real/100% para manter as dimensões das etiquetas.</p>
+<h2>9. Exportação</h2>
+<p>Exportar PDF abre a escolha do nome e da pasta do arquivo. Os documentos usam A4 retrato e paginação automática. O PDF do histórico de compras preserva os filtros aplicados. Esta página também pode ser exportada.</p>
+<p>O menu do botão direito permite copiar uma seleção, exportar uma tabela para Excel (CSV) ou imprimir/salvar em PDF. A exportação CSV exige uma tabela na tela e usa a última tabela exibida.</p>
+<h2>10. Armazenamento dos dados</h2>
+<p>O banco de dados SQLite fica na pasta local do usuário do Windows: <code>%LOCALAPPDATA%\\Campos\\GestaoEstoque\\estoque.db</code>. Fechar e abrir o programa mantém os registros. O sistema não sincroniza automaticamente os dados com outros computadores.</p>
+<p>Salvar automaticamente não cria uma cópia de segurança em outro dispositivo. Para guardar uma cópia manual, feche o sistema e copie a pasta GestaoEstoque para um local seguro. PDFs e arquivos CSV são documentos de consulta e não substituem o banco de dados.</p>
+</article>`;
+    }
     let lastSavedProduct=null,editingProduct=null,scanTimer;
     let financeMonth=new Date().getMonth()+1,financeYear=new Date().getFullYear();
     const purchaseHistoryFilters={start:'',end:'',product:'',store:''};
@@ -34,9 +67,9 @@
         const percent=c.percent===null?'Sem base percentual no mês anterior':Math.abs(c.percent).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%';
         return '<h2 style="font-size:16px;font-weight:400;margin:0 0 10px">Comparação com o mês anterior</h2><strong style="display:block;font-size:20px">'+esc(direction+': '+referenceMoney(Math.abs(c.difference))+' • '+percent)+'</strong><p class="muted small">'+esc(currentMonth+': '+referenceMoney(c.current.value)+' • '+previousMonth+': '+referenceMoney(c.previous.value))+'</p>'+(chart?barras([[currentMonth,c.current.value],[previousMonth,c.previous.value]]):'');
     }
-    function addSpendingComparison(container,chart=false){
+    function addSpendingComparison(container,chart=false,existingPanel=null){
         if(!container)return;
-        const panel=document.createElement('div');
+        const panel=existingPanel||document.createElement('div');
         panel.className=(chart?'panel':'card')+' monthly-comparison financial-info-card';
         function draw(){
             panel.innerHTML=spendingComparisonMarkup(chart);
@@ -47,7 +80,7 @@
             panel.querySelector('.info-btn').setAttribute('aria-label','Informações da comparação mensal');
         }
         draw();
-        container.append(panel);
+        if(!existingPanel)container.append(panel);
         let date=localDate(new Date());
         const timer=setInterval(()=>{
             if(!panel.isConnected){clearInterval(timer);return;}
@@ -95,6 +128,8 @@
     const layoutStyle=document.createElement('style');
     layoutStyle.id='desktop-layout';
     layoutStyle.textContent=`
+        #desktop-menu button{display:block;border:0;border-radius:5px;background:white;padding:11px 14px;color:#20366c;text-align:left;width:100%;cursor:pointer;transition:background-color .12s,color .12s}
+        #desktop-menu button:hover,#desktop-menu button:focus-visible{background:#e7efff;color:#123e89}
         @media screen{
             html,body{height:100%;overflow:hidden}
             body{display:flex;flex-direction:column}
@@ -136,6 +171,10 @@
         .registration-panel input,.registration-panel select{padding:10px 12px;font-size:15px;height:clamp(38px,5.2vh,46px)}
         .registration-panel .registration-help{width:100%;font-size:12px;line-height:1.35;margin:16px 0 0}
         .registration-panel button.action{margin-top:10px;padding:9px 16px}
+        .registration-panel .registration-actions{display:flex;justify-content:space-between;gap:12px;width:100%;margin-top:12px}
+        .registration-panel .registration-actions button.action{margin:0}
+        .registration-panel button.registration-cancel{background:#b42318;color:#fff}
+        .registration-panel button.registration-cancel:hover{background:#912018}
         .registration-panel .status:empty{display:none}
         .registration-panel .status{width:100%;margin-top:6px;font-size:13px}
         .code-entry{display:flex;gap:6px;align-items:stretch}
@@ -148,6 +187,22 @@
         #link-code-dialog{width:min(760px,95vw);max-height:90vh;overflow:auto;border:1px solid #dce2ec;border-radius:12px;padding:24px;color:#23314b}
         #link-code-dialog::backdrop{background:#172a5066}
         #link-code-dialog h2{margin-top:0}
+        #link-code-dialog .link-products{display:grid;gap:8px;max-height:310px;overflow:auto;padding:3px;margin-top:10px}
+        #link-code-dialog .link-product-card{display:flex;align-items:center;gap:12px;margin:0;padding:14px;border:1px solid #dce2ec;border-radius:10px;background:#fff;cursor:pointer;font-weight:400;transition:background .15s,border-color .15s}
+        #link-code-dialog .link-product-card:hover{background:#f6f8fc;border-color:#9eafd1}
+        #link-code-dialog .link-product-card:has(input:checked){background:#eef3ff;border-color:#385994;box-shadow:inset 0 0 0 1px #385994}
+        #link-code-dialog .link-product-card:focus-within{outline:2px solid #385994;outline-offset:1px}
+        #link-code-dialog .link-product-card:has(input:disabled){opacity:.55;cursor:not-allowed}
+        #link-code-dialog .link-product-card input{width:17px;height:17px;flex:0 0 17px;margin:0;padding:0;accent-color:#20366c}
+        #link-code-dialog .link-product-info{display:grid;gap:4px;flex:1;min-width:0;overflow-wrap:anywhere}
+        #link-code-dialog .link-product-info strong{font-size:15px;color:#20366c}
+        #link-code-dialog .link-product-info small{font-size:12px;color:#66758d}
+        #link-code-dialog .link-product-balance{display:grid;gap:3px;text-align:right;font-size:13px;max-width:35%;overflow-wrap:anywhere}
+        #link-code-dialog .link-product-balance small{font-size:11px;color:#66758d;font-weight:400}
+        #link-code-dialog .link-empty{padding:24px 12px;margin:0;text-align:center;color:#66758d;background:#f6f8fc;border-radius:10px}
+        #link-code-dialog .link-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:16px;border-top:1px solid #e7eaf1}
+        #link-code-dialog .link-actions button{margin:0}
+        #link-error:empty{display:none}
         #link-product{height:230px;padding:0}
         #link-product option{padding:10px 12px;border-bottom:1px solid #edf0f5;white-space:normal}
         #label-dialog h2{margin:0 0 10px}
@@ -258,13 +313,28 @@
         }
         const button=panel.querySelector('button.action'),message=$('msg'),help=document.createElement('p');
         help.className='muted registration-help';
-        panel.replaceChildren(columns,help,button,message);
+        const actions=document.createElement('div'),cancel=document.createElement('button');
+        actions.className='registration-actions';button.id='registration-save';
+        cancel.type='button';cancel.className='action registration-cancel';cancel.textContent='Cancelar cadastro';
+        cancel.onclick=()=>{
+            if(saving)return;
+            show(2);lastSavedProduct=null;registrationScan=null;
+            for(const id of ['code','nome','un','min'])$(id).value='';
+            $('cat').selectedIndex=-1;$('control-unit').selectedIndex=-1;
+            $('un').hidden=true;$('msg').textContent='';
+            document.querySelector('label[for="min"]').textContent='Estoque mínimo';
+            $('code').focus();
+        };
+        actions.append(cancel,button);panel.replaceChildren(columns,help,actions,message);
         const input=$('code'),group=document.createElement('div'),generate=document.createElement('button');
         group.className='code-entry';input.before(group);generate.type='button';generate.id='generate-barcode';generate.textContent='Gerar código';generate.title='Produto sem código de barras: gerar código interno único';
         generate.onclick=async()=>{generate.disabled=true;try{input.value=await request('generateCode');lastSavedProduct=null;input.dispatchEvent(new Event('change'));}catch(e){alert(e.message);}finally{generate.disabled=false;}};
         group.append(input,generate);
-        const print=document.createElement('button');print.type='button';print.id='print-saved-label';print.className='action secondary';print.textContent='Imprimir etiqueta';print.hidden=true;print.onclick=()=>openLabel(lastSavedProduct);button.after(print);
-        input.addEventListener('input',()=>{lastSavedProduct=null;print.hidden=true;});
+        input.addEventListener('input',()=>{lastSavedProduct=null;});
+        input.autocomplete='off';input.spellcheck=false;
+        input.placeholder='Bipe o produto ou digite o código';
+        input.addEventListener('focus',()=>input.select());
+        requestAnimationFrame(()=>{if(input.isConnected&&current===2)input.focus();});
         document.querySelector('label[for="un"]').htmlFor='control-unit';
         const unitChoice=document.createElement('select');unitChoice.id='control-unit';
         for(const unit of ['unidade','pacote','fardo','caixa'])unitChoice.add(new Option(unit[0].toUpperCase()+unit.slice(1),unit));
@@ -283,6 +353,12 @@
         };
         update();
     }
+    function labelPackageContents(pack,unit){
+        // Caixa / fardo describes the outer packaging, not the items inside it.
+        const base=pack.Name.toLocaleLowerCase('pt-BR')==='caixa / fardo'&&['caixa','fardo'].includes(unit.toLocaleLowerCase('pt-BR'))?'unidade':unit;
+        const plurals={unidade:'unidades',pacote:'pacotes',fardo:'fardos',caixa:'caixas'};
+        return pack.Factor+' '+(pack.Factor===1?base:(plurals[base.toLocaleLowerCase('pt-BR')]||base));
+    }
     async function openLabel(id,quantity=null,entryInfo='',entryContext=null){
         if(!id){alert('Salve o produto antes de imprimir a etiqueta.');return;}
         try{
@@ -292,17 +368,19 @@
             const latest=lastEntry&&(!lastEntry.Unit||lastEntry.Unit===product.Unit)?lastEntry:null;
             const receivedUnits=latest?(latest.Converted??latest.Quantity*latest.Factor):quantity??1;
             const matchesLatest=pack=>latest?.Parts?.length===1?latest.Parts[0].Name===pack.Name&&latest.Parts[0].Factor===pack.Factor:latest?.Factor===pack.Factor&&(latest.Package===pack.Name||latest.Package?.startsWith(pack.Name+' — '));
-            const packageCount=pack=>matchesLatest(pack)?latest.Quantity:Math.max(1,Math.ceil(receivedUnits/pack.Factor));
+            const entryParts=pack=>(latest?.Parts||[]).filter(part=>part.PackageIndex>=0&&part.Name===pack.Name&&part.Factor===pack.Factor);
+            const labelPackages=product.Packages.map((pack,index)=>({pack,index})).filter(({pack})=>latest?.Parts?.length?entryParts(pack).length>0:latest&&matchesLatest(pack));
+            const packageCount=pack=>entryParts(pack).length?entryParts(pack).reduce((sum,part)=>sum+part.Quantity,0):latest.Quantity;
             const resetRegistration=current===2&&lastSavedProduct===id;
-            const initialPackage=latest?product.Packages.findIndex(matchesLatest):-1;
+            const initialPackage=labelPackages.length===1?labelPackages[0].index:-1;
             quantity??=receivedUnits;document.querySelector('#label-dialog')?.remove();
             const dialog=document.createElement('dialog');dialog.id='label-dialog';
             dialog.innerHTML=`<h2>Etiquetas do produto</h2><p class="muted" id="label-entry-info"></p><div class="label-options"><div><label for="label-count">Quantidade de etiquetas</label><input id="label-count" type="number" min="1" max="10000" step="1"></div><div><label>Papel</label><input value="A4 — várias etiquetas por folha" readonly></div></div><div class="label-options"><div><label for="label-size">Formato</label><select id="label-size"><option value="30,20">Compacto: 30 × 20 mm</option><option value="40,20">40 × 20 mm</option><option value="60,40">60 × 40 mm</option><option value="80,50">80 × 50 mm</option><option value="100,50">100 × 50 mm</option><option value="custom">Personalizado</option></select></div><div><label for="label-width">Largura (mm)</label><input id="label-width" type="number" min="25" max="200" step="0.1" value="30"></div><div><label for="label-height">Altura (mm)</label><input id="label-height" type="number" min="15" max="280" step="0.1" value="20"></div></div><div class="label-options"><div><label for="label-gap">Espaço entre etiquetas (mm)</label><input id="label-gap" type="number" min="0" max="15" step="0.1" value="1"></div><div><label for="label-margin">Margem da folha A4 (mm)</label><input id="label-margin" type="number" min="0" max="30" step="0.1" value="5"></div></div><p class="small muted">As etiquetas são distribuídas em linhas e colunas na folha A4. O formato compacto de 30 × 20 mm permite até 78 etiquetas por folha. Imprima uma única cópia: a quantidade já está distribuída no documento.</p><p id="label-layout-summary" class="status"></p><div id="label-print-area"></div><button type="button" class="action" id="label-print">Gerar PDF</button><button type="button" class="action secondary" id="label-close">Fechar</button>`;
             document.body.append(dialog);$('label-entry-info').textContent=entryInfo||'Confira a quantidade, o papel e as medidas antes de imprimir.';$('label-count').value=quantity;
             const targetBox=document.createElement('div');targetBox.innerHTML='<label for="label-target">Onde a etiqueta será colocada?</label><select id="label-target"></select><p id="label-target-note" class="source-note"></p>';
             $('label-entry-info').after(targetBox);
-            $('label-target').add(new Option('Em cada produto avulso — '+receivedUnits+' unidades','unit'));
-            product.Packages.forEach((p,i)=>$('label-target').add(new Option('Em cada '+p.Name.toLocaleLowerCase('pt-BR')+' com '+p.Factor+' '+product.Unit+' — '+packageCount(p)+' '+p.Name.toLocaleLowerCase('pt-BR'),String(i))));
+            $('label-target').add(new Option('Por '+product.Unit+' — '+receivedUnits+' etiqueta(s)','unit'));
+            labelPackages.forEach(({pack:p,index:i})=>$('label-target').add(new Option('Em cada '+p.Name.toLocaleLowerCase('pt-BR')+' com '+labelPackageContents(p,product.Unit)+' — '+packageCount(p)+' etiqueta(s)',String(i))));
             let saved={};try{saved=await request('getLabelProfile')||{};}catch{}
             if(saved.layoutVersion!==3)saved={width:30,height:20,gap:1,margin:5};
             for(const key of ['width','height','gap','margin'])if(saved[key]!==undefined)$('label-'+key).value=saved[key];
@@ -357,7 +435,7 @@
                         $('label-target-note').textContent=`${receivedUnits} etiquetas iguais para os produtos avulsos. O código é o mesmo da caixa. Selecione a unidade e a quantidade na movimentação.`;
                     }else{
                         const index=Number(target),pack=product.Packages[index];
-                        data={...unitData,packageLabel:pack.Name+' c/ '+pack.Factor+' '+product.Unit};
+                        data={...unitData,packageLabel:pack.Name+' c/ '+labelPackageContents(pack,product.Unit)};
                         const count=packageCount(pack);
                         $('label-count').value=Math.max(1,count);
                         $('label-target-note').textContent=`${Math.max(1,count)} etiquetas iguais para ${pack.Name}. O código é o mesmo dos produtos avulsos. Selecione a embalagem e a quantidade na movimentação.`;
@@ -370,23 +448,41 @@
             dialog.showModal();await selectTarget();
         }catch(e){alert(e.message);}
     }
+    function latestProductCode(product){
+        return product.CodeAliases?.at(-1)||product.Code;
+    }
     function openLinkCode(code){
         document.querySelector('#link-code-dialog')?.remove();
         const dialog=document.createElement('dialog');dialog.id='link-code-dialog';
-        dialog.innerHTML='<h2>Vincular código a um produto existente</h2><p>Novo código: <strong id="link-new-code"></strong></p><label for="link-product-search">Buscar por nome, categoria ou código</label><input id="link-product-search" placeholder="Ex.: Café"><label for="link-product">Selecione um produto cadastrado</label><select id="link-product" size="6" aria-label="Produtos cadastrados"></select><p id="link-product-details" class="source-note">Escolha o produto ao qual esse código pertence.</p><p class="small muted">Confira se é a mesma apresentação e unidade. Este vínculo identifica o produto. Selecione ou informe a embalagem na Entrada / Retirada antes de confirmar. O código antigo continuará válido.</p><p id="link-error" role="alert" style="color:#a33232"></p><button type="button" class="action" id="link-save" disabled>Salvar vínculo</button><button type="button" class="action secondary" id="link-cancel">Cancelar</button>';
+        dialog.setAttribute('aria-labelledby','link-code-title');
+        dialog.innerHTML='<h2 id="link-code-title">Vincular código a um produto existente</h2><p>Novo código: <strong id="link-new-code"></strong></p><label for="link-product-search">Buscar por nome, categoria ou código</label><input id="link-product-search" placeholder="Ex.: Café"><p id="link-products-label">Selecione um produto cadastrado</p><div id="link-product" class="link-products" role="radiogroup" aria-labelledby="link-products-label"></div><p id="link-error" role="alert" style="color:#a33232"></p><div class="link-actions"><button type="button" class="action secondary" id="link-cancel">Cancelar</button><button type="button" class="action" id="link-save" disabled>Salvar vínculo</button></div>';
         document.body.append(dialog);$('link-new-code').textContent=code;
         function options(){
             const query=$('link-product-search').value.trim().toLocaleLowerCase('pt-BR');
             const matches=inventory.Products.filter(p=>(p.Name+' '+p.Code+' '+(p.CodeAliases||[]).join(' ')+' '+p.Category).toLocaleLowerCase('pt-BR').includes(query)).sort((a,b)=>a.Name.localeCompare(b.Name,'pt-BR'));
             $('link-product').replaceChildren();
-            for(const p of matches){const option=new Option(`${p.Name} • ${p.Category} • ${p.Unit} • Saldo: ${p.Balance} • Código: ${p.Code}${p.Active?'':' • INATIVO'}`,p.Id);option.disabled=!p.Active;$('link-product').add(option);}
-            $('link-product').selectedIndex=-1;$('link-save').disabled=true;$('link-product-details').textContent=matches.length?'Escolha o produto ao qual esse código pertence.':'Nenhum produto encontrado para esta busca.';
+            for(const p of matches){
+                const card=document.createElement('label');card.className='link-product-card';
+                const radio=document.createElement('input');radio.type='radio';radio.name='link-product-choice';radio.value=p.Id;radio.disabled=!p.Active;
+                const info=document.createElement('span');info.className='link-product-info';
+                const name=document.createElement('strong');name.textContent=p.Name;
+                const category=document.createElement('small');category.textContent=p.Category+(p.Active?'':' • Inativo');
+                const codeLine=document.createElement('small');codeLine.textContent='Código: '+latestProductCode(p);
+                info.append(name,category,codeLine);
+                const balance=document.createElement('span');balance.className='link-product-balance';
+                const caption=document.createElement('small');caption.textContent='Saldo';
+                const amount=document.createElement('strong');amount.textContent=p.Balance+' '+p.Unit;
+                balance.append(caption,amount);card.append(radio,info,balance);$('link-product').append(card);
+            }
+            if(!matches.length){const empty=document.createElement('p');empty.className='link-empty';empty.setAttribute('role','status');empty.textContent='Nenhum produto encontrado para esta busca.';$('link-product').append(empty);}
+            $('link-save').disabled=true;
         }
         $('link-product-search').oninput=options;
-        $('link-product').onchange=()=>{const p=inventory.Products.find(p=>p.Id===$('link-product').value);$('link-save').disabled=!p?.Active;$('link-product-details').textContent=p?`Produto: ${p.Name} • Cada leitura deste novo código representa 1 ${p.Unit}. Saldo atual: ${p.Balance} ${p.Unit}. Códigos vinculados: ${[p.Code,...(p.CodeAliases||[])].join(', ')}`:'Selecione um produto.';};
+        const selectedProductId=()=>$('link-product').querySelector('input:checked')?.value;
+        $('link-product').onchange=()=>{const p=inventory.Products.find(p=>p.Id===selectedProductId());$('link-save').disabled=!p?.Active;};
         $('link-cancel').onclick=()=>dialog.close();
         $('link-save').onclick=async()=>{
-            const productId=$('link-product').value;if(!productId)return;
+            const productId=selectedProductId();if(!productId)return;
             $('link-save').disabled=true;$('link-cancel').disabled=true;$('link-error').textContent='';
             try{
                 sync(await request('linkCode',{productId,code}));dialog.close();
@@ -397,6 +493,43 @@
         options();dialog.showModal();$('link-product-search').focus();
     }
     atualizaLista=function(){const query=$('busca').value.toLocaleLowerCase('pt-BR');$('lista').innerHTML=table(produtos.filter(p=>(p.nome+' '+p.code+' '+p.aliases.join(' ')).toLocaleLowerCase('pt-BR').includes(query)));};
+    // Keyboard-wedge scanners send a rapid sequence followed by Enter or Tab.
+    // Keep normal typing intact; restore the original field only after a scan is recognized.
+    let registrationScan=null,scannerEndTimer;
+    function applyScannerRead(scan){
+        if(!scan||!scan.code.isConnected||document.querySelector('dialog[open]')||scan.text.length<6||(scan.last-scan.start)/(scan.text.length-1)>=40)return false;
+        const movement=current===3||current===4;
+        if(scan.code!==(movement?$('codigo'):current===2?$('code'):null))return false;
+        if(scan.target!==scan.code&&scan.value!==undefined){
+            scan.target.value=scan.value;
+            scan.target.dispatchEvent(new Event('input',{bubbles:true}));
+            scan.target.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+        scan.code.value=scan.text;scan.code.dispatchEvent(new Event('input',{bubbles:true}));scan.code.dispatchEvent(new Event('change',{bubbles:true}));
+        if(movement){clearTimeout(scanTimer);buscar();}
+        scan.code.focus();scan.code.select();return true;
+    }
+    document.addEventListener('keydown',event=>{
+        clearTimeout(scannerEndTimer);
+        const movement=current===3||current===4,code=movement?$('codigo'):$('code');
+        if((current!==2&&!movement)||!code||document.querySelector('dialog[open]')||event.ctrlKey||event.altKey||event.metaKey||event.isComposing){registrationScan=null;return;}
+        const now=performance.now();
+        if(event.key==='Enter'||event.key==='Tab'){
+            const scan=registrationScan;registrationScan=null;
+            const recognized=scan&&scan.code===code&&scan.target===event.target&&scan.text.length>=6&&now-scan.last<100&&(scan.last-scan.start)/(scan.text.length-1)<40;
+            if(recognized&&applyScannerRead(scan)){
+                event.preventDefault();event.stopImmediatePropagation();
+            }else if(!movement&&event.target===code&&event.key==='Enter'){event.preventDefault();}
+            return;
+        }
+        if(event.key==='Shift')return;
+        if(event.key.length!==1||event.repeat){registrationScan=null;return;}
+        if(!registrationScan||registrationScan.code!==code||registrationScan.target!==event.target||now-registrationScan.last>80){
+            registrationScan={code,target:event.target,value:event.target.value,text:'',start:now,last:now};
+        }
+        registrationScan.text+=event.key;registrationScan.last=now;
+        if(movement){const scan=registrationScan;scannerEndTimer=setTimeout(()=>{if(registrationScan===scan){registrationScan=null;applyScannerRead(scan);}},120);}
+    },true);
     function setupScanner(){
         clearTimeout(scanTimer);const input=$('codigo');input.autocomplete='off';input.spellcheck=false;input.placeholder='Digite parte do nome ou bipe o código de barras';
         input.previousElementSibling.textContent='Código ou nome do produto';
@@ -408,8 +541,19 @@
     function addContextMenu() {
         const menu = document.createElement('div');
         menu.id='desktop-menu'; menu.style.cssText='display:none;position:fixed;z-index:1000;background:white;border:1px solid #dce2ec;border-radius:8px;padding:6px;box-shadow:0 5px 20px #1a2c5033';
+        const copy = document.createElement('button');
+        copy.textContent='Copiar';copy.title='Copiar seleção (Ctrl+C)';
+        // Keep the page selection intact when clicking the menu, just like Ctrl+C.
+        menu.addEventListener('mousedown',e=>e.preventDefault());
+        copy.onclick=()=>{
+            menu.style.display='none';
+            if(!window.getSelection()?.toString())return;
+            try{if(!document.execCommand('copy'))throw new Error('copy');}
+            catch{alert('Não foi possível copiar a seleção. Tente usar Ctrl+C.');}
+        };
+        menu.append(copy);
         for(const label of ['Exportar tabela para Excel (CSV)','Imprimir / Salvar em PDF']) {
-            const b = document.createElement('button'); b.textContent=label; b.style.cssText='display:block;border:0;background:white;padding:11px 14px;color:#20366c;text-align:left;width:100%;cursor:pointer';
+            const b = document.createElement('button'); b.textContent=label;
             b.onclick=()=>{menu.style.display='none'; if(label.startsWith('Exportar')) exportTable(); else request('print').catch(e=>alert(e.message));};
             menu.append(b);
         }
@@ -462,7 +606,7 @@
         if(!ps.length) return '<table><tr><th>Produto</th><th>Categoria</th><th>Saldo</th><th>Mínimo</th><th>Situação</th></tr><tr><td colspan="5">Nenhum produto encontrado.</td></tr></table>';
         const container=document.createElement('div');container.innerHTML=referenceTable(ps);
         const rows=[...container.querySelectorAll('tr')];if(current!==0)rows[0].insertAdjacentHTML('beforeend','<th>Ações</th>');
-        rows.slice(1).forEach((row,i)=>{const product=inventory.Products.find(p=>p.Id===ps[i].id);if(product){if(product.Balance===0){const status=document.createElement('span');status.textContent='Em falta';status.style.cssText='display:inline-block;color:#b42318;background:#fee4e2;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}else if(product.Balance>product.Minimum){const status=document.createElement('span');status.textContent='Normal';status.style.cssText='display:inline-block;color:#067647;background:#dcfae6;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}row.cells[2].textContent=stockText(product);if(current===1){const code=document.createElement('small');code.className='product-barcode';code.textContent='Código: '+product.Code;code.style.cssText='display:block;margin-top:4px;font:12px Consolas,monospace;overflow-wrap:anywhere';row.cells[0].append(code);}row.cells[3].textContent=product.Minimum+' '+product.Unit;}if(current===0)return;const cell=document.createElement('td');cell.innerHTML=`<div class="product-actions"><button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button><button type="button" class="label-action product-icon" data-edit-product="${esc(ps[i].id)}" title="Editar produto" aria-label="Editar ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5Z M14 5l5 5"/></svg></button><button type="button" class="label-action product-icon product-delete" data-delete-product="${esc(ps[i].id)}" title="Excluir produto" aria-label="Excluir ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>`;if(current!==1)cell.innerHTML=`<button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button>`;row.append(cell);});
+        rows.slice(1).forEach((row,i)=>{const product=inventory.Products.find(p=>p.Id===ps[i].id);if(product){if(product.Balance===0){const status=document.createElement('span');status.textContent='Em falta';status.style.cssText='display:inline-block;color:#b42318;background:#fee4e2;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}else if(product.Balance>product.Minimum){const status=document.createElement('span');status.textContent='Normal';status.style.cssText='display:inline-block;color:#067647;background:#dcfae6;border-radius:20px;padding:7px 10px';row.cells[4].replaceChildren(status);}row.cells[2].textContent=stockText(product);if(current===1){const code=document.createElement('small');code.className='product-barcode';code.textContent='Código: '+latestProductCode(product);code.style.cssText='display:block;margin-top:4px;font:12px Consolas,monospace;overflow-wrap:anywhere';row.cells[0].append(code);}row.cells[3].textContent=product.Minimum+' '+product.Unit;}if(current===0)return;const cell=document.createElement('td');cell.innerHTML=`<div class="product-actions"><button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button><button type="button" class="label-action product-icon" data-edit-product="${esc(ps[i].id)}" title="Editar produto" aria-label="Editar ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5Z M14 5l5 5"/></svg></button><button type="button" class="label-action product-icon product-delete" data-delete-product="${esc(ps[i].id)}" title="Excluir produto" aria-label="Excluir ${esc(ps[i].nome)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>`;if(current!==1)cell.innerHTML=`<button type="button" class="label-action" data-label-product="${esc(ps[i].id)}">Imprimir etiqueta</button>`;row.append(cell);});
         return container.innerHTML;
     };
     render=function() {
@@ -470,7 +614,7 @@
         referenceRender();
         document.querySelector('main').scrollTop=0;
         document.body.dataset.screen=String(current);
-        if(current===8) document.querySelector('#page .content > .notice')?.remove();
+        if(current===8) page.innerHTML=aboutSystem();
         if(current===5||current===8){
             const title=page.querySelector('h1'),subtitle=title.nextElementSibling,header=document.createElement('div'),text=document.createElement('div'),button=document.createElement('button');
             header.className='products-heading';title.before(header);text.append(title,subtitle);button.type='button';button.id='page-export-pdf';button.className='action secondary';button.textContent='Exportar PDF';button.onclick=()=>window.print();header.append(text,button);
@@ -624,13 +768,13 @@
         const product=inventory.Products.find(p=>p.Id===id);if(!product)return;
         show(2);editingProduct=product;
         $('page').querySelector('h1').textContent='Editar produto';
-        document.querySelector('.registration-panel button.action').textContent='Salvar alterações';
+        $('registration-save').textContent='Salvar alterações';
         const fields={code:product.Code,nome:product.Name,cat:product.Category,un:product.Unit,min:product.Minimum};
         for(const [key,value] of Object.entries(fields)){
             const field=$(key);if(field.tagName==='SELECT'&&value&&![...field.options].some(o=>o.value===String(value)))field.add(new Option(value,value));field.value=value;
         }
         window.loadControlUnit(product);
-        const cancel=document.createElement('button');cancel.type='button';cancel.className='action secondary';cancel.textContent='Cancelar edição';cancel.onclick=()=>show(1);$('msg').before(cancel);
+        const cancel=document.querySelector('.registration-cancel');cancel.className='action secondary';cancel.textContent='Cancelar edição';cancel.onclick=()=>{if(!saving)show(1);};
     }
     async function deleteProduct(id){
         const product=inventory.Products.find(p=>p.Id===id);if(!product)return;
@@ -644,9 +788,10 @@
     cadastrar=function(){save(async()=>{
         const code=$('code').value.trim(),name=$('nome').value.trim();let unit=$('un').value.trim();
         const minimum=Number($('min').value);
-        if(!code||!name||!unit||!$('min').value.trim()||!Number.isSafeInteger(minimum)||minimum<0)throw new Error('Preencha código, nome, medida e mínimo inteiro não negativo.');
+        if(!code||!name||!unit||!$('cat').value||!$('min').value.trim()||!Number.isSafeInteger(minimum)||minimum<0)throw new Error('Preencha código, nome, categoria, medida e mínimo inteiro não negativo.');
         const p={...editingProduct,Code:code,Name:name,Unit:unit,Category:$('cat').value,ControlLevels:[],MinimumPackageQuantity:null,Minimum:minimum,Target:Math.max(minimum,editingProduct?.Target??minimum),Active:true,Packages:editingProduct?.Packages??[]};
-        sync(await request('saveProduct',p));if(editingProduct){editingProduct=null;show(1);return;}lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('print-saved-label').hidden=false;$('msg').textContent='Produto cadastrado. Você já pode imprimir a etiqueta. Registre o saldo inicial em Entrada.';
+        if(editingProduct&&editingProduct.Unit!==unit){p.Packages=[];p.PackagingStructure=null;}
+        sync(await request('saveProduct',p));if(editingProduct){editingProduct=null;show(1);return;}lastSavedProduct=inventory.Products.find(x=>x.Code===code).Id;$('msg').textContent='Produto cadastrado. Registre o saldo inicial e imprima as etiquetas em Entrada.';
     });};
     buscar=function(){
         const code=$('codigo').value.trim(); let p=produtos.find(x=>x.code===code||x.aliases.includes(code)||x.packages.some(pk=>pk.Code&&pk.Code===code));
@@ -657,7 +802,7 @@
                 selected=null;$('formmov').classList.add('hide');$('msg').textContent='';
                 $('produto').innerHTML='<p>Selecione o produto:</p>';
                 for(const match of matches){
-                    const button=document.createElement('button');button.type='button';button.className='action secondary';button.textContent=match.nome+' · '+match.code;
+                    const button=document.createElement('button');button.type='button';button.className='action secondary';button.textContent=match.nome+' · '+(match.aliases.at(-1)||match.code);
                     button.onclick=()=>{$('codigo').value=match.code;buscar();focusMovementQuantity();};$('produto').append(button);
                 }
                 return;
@@ -705,22 +850,27 @@
         panel.innerHTML='<div id="packaging-fields"><details style="border:1px solid #dce2ec;border-radius:8px;padding:12px"><summary id="packaging-summary" style="cursor:pointer;color:#20366c"></summary><div style="margin-top:10px"><label>📦 '+esc(product.Unit)+' por caixa / fardo<input id="units-per-bundle" type="number" min="1" max="10000" step="1"></label></div><small>A estrutura será lembrada para este produto ao confirmar.</small></details><label>'+(current===3?'O que chegou?':'O que vai sair?')+'</label><div style="display:flex;gap:12px;flex-wrap:wrap"><label style="flex:1;min-width:100px">Caixa / fardo<input id="structure-packages" type="number" min="0" step="1" value="0"></label><label style="flex:1;min-width:100px">'+esc(product.Unit)+' avulsos<input id="structure-units" type="number" min="0" step="1" value="0"></label></div><p id="structure-equation" aria-live="polite" class="source-note"></p></div>';
         $('tipoemb').previousElementSibling.before(panel);
         $('units-per-bundle').value=units;
+        $('units-per-bundle').min='0';
         panel.querySelector('details').open=!units;
         const legacy=[$('tipoemb'),$('tipoemb').previousElementSibling,$('q'),$('q').previousElementSibling,$('new-movement-package'),$('mixed-output')].filter(Boolean);
         legacy.forEach(el=>{el.hidden=true;el.style.display='none';});
-        panel.addEventListener('input',()=>{
-            $('packaging-summary').textContent='1 caixa / fardo = '+$('units-per-bundle').value+' '+product.Unit;
+        function updateStructure(){
+            const content=Number($('units-per-bundle').value),packages=$('structure-packages');
+            packages.disabled=!Number.isSafeInteger(content)||content<=0||content>10000;
+            if(packages.disabled)packages.value='0';
+            $('packaging-summary').textContent=content>0?'1 caixa / fardo = '+content+' '+product.Unit:'Sem caixa / fardo — informe os avulsos';
             calc();
-        });
-        $('packaging-summary').textContent=units?'1 caixa / fardo = '+units+' '+product.Unit:'Defina o conteúdo da caixa / fardo';
+        }
+        panel.addEventListener('input',updateStructure);
+        updateStructure();
         // The structure replaces the previous quantity controls in both screens.
     }
-    function focusMovementQuantity(){const input=$('structure-packages')??$('q');input?.focus();input?.select();}
+    function focusMovementQuantity(){const packages=$('structure-packages'),input=packages?(packages.disabled?$('structure-units'):packages):$('q');input?.focus();input?.select();}
     function usingStructure(){return !!$('packaging-structure');}
     function structureParts(){
         const u=Number($('units-per-bundle').value),quantity=Number($('structure-packages').value);
         const valid=n=>Number.isSafeInteger(n)&&n>0&&n<=10000;
-        if((quantity!==0&&!valid(u))||($('units-per-bundle').value!==''&&!valid(u)))return [{PackageIndex:-1,Quantity:NaN}];
+        if((quantity!==0&&!valid(u))||(u!==0&&!valid(u)))return [{PackageIndex:-1,Quantity:NaN}];
         return [{PackageIndex:-1,Quantity:quantity,NewPackage:{Name:'Caixa / fardo',Factor:u||1}},
             {PackageIndex:-1,Quantity:Number($('structure-units').value)}];
     }
@@ -792,11 +942,21 @@
         }
         const id=selected.id;sync(await request('move',m));const updated=produtos.find(p=>p.id===id);
         $('msg').textContent=`Movimentação registrada. Novo saldo: ${updated.saldo} ${updated.un}.`;
+        if(m.Type==='Entrada'){
+            const entry=inventory.Movements.filter(item=>item.ProductId===id&&item.Type==='Entrada').at(-1);
+            const print=document.createElement('button');print.type='button';print.className='action secondary';print.textContent='Imprimir etiquetas desta entrada';
+            print.onclick=()=>openLabel(id,null,'Etiquetas da entrada de '+p.Name,entry);
+            $('msg').append(document.createElement('br'),print);
+        }
         $('formmov').classList.add('hide');$('produto').innerHTML='';selected=null;
         $('codigo').value='';requestAnimationFrame(()=>$('codigo')?.focus());
     });};
     desenhaRelatorio=function(){
         referenceReports();
+        if(abaRel==='Gastos'){
+            const comparison=[...document.querySelectorAll('#relconteudo .metric')].find(card=>card.querySelector('small')?.textContent==='Variação mês anterior');
+            if(comparison)addSpendingComparison(comparison.parentElement,false,comparison);
+        }
         if(abaRel==='Comparação mensal')addSpendingComparison($('relconteudo'),true);
         dataNotice(document.querySelector('#page > .notice'),'Os relatórios utilizam os dados salvos no computador. Selecione o período, o local e a categoria para consultar.');
         const filterNote=document.querySelector('#page .section-note');if(filterNote)filterNote.textContent='Datas filtram compras e saídas. Categoria também filtra o estoque atual. O local filtra somente compras, pois não é atributo das saídas nem do saldo. Estoque é uma posição atual.';
@@ -825,7 +985,7 @@
     request('load').then(data=>{
         sync(data);const now=new Date();inicioRel=localDate(new Date(now.getFullYear(),now.getMonth(),1));fimRel=localDate(new Date(now.getFullYear(),now.getMonth()+1,0));
         document.querySelector('.badge-top').textContent='DADOS SALVOS NESTE COMPUTADOR';
-        document.querySelector('.badge-top').title='Clique com o botão direito para exportar, imprimir ou abrir ferramentas de gestão. Atalho: F2.';
+        document.querySelector('.badge-top').title='Clique com o botão direito para copiar, exportar uma tabela ou imprimir/salvar em PDF.';
         addContextMenu();show(0);document.documentElement.style.visibility='visible';request('ready');
     }).catch(e=>{document.documentElement.style.visibility='visible';page.innerHTML='<h1>Não foi possível carregar o estoque</h1><p>'+esc(e.message)+'</p>';});
 })();

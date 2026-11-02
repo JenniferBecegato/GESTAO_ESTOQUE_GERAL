@@ -6,7 +6,7 @@ Aplicação Windows Forms (.NET 10) com a interface HTML original do protótipo 
 Abra `GESTAO_ESTOQUE_GERAL.slnx` no Visual Studio com suporte a .NET 10/desktop e execute com F5. O executável está em `bin\Release\net10.0-windows\GESTAO_ESTOQUE_GERAL.exe`.
 
 ## Interface do protótipo
-`Prototipo.html` é uma cópia integral do arquivo recebido: os estilos, menus, cartões, formulários, abas de relatórios e os 15 tópicos da descrição foram preservados. `Desktop.js` conecta a interface ao banco real. Os avisos de demonstração das telas operacionais são substituídos por mensagens sobre os dados locais. A descrição permanece integralmente igual à referência fornecida, incluindo o texto de planejamento.
+`Prototipo.html` preserva a referência recebida. `Desktop.js` conecta a interface ao banco real e adapta as telas ao funcionamento atual. A aba Sobre o sistema substitui a proposta de desenvolvimento por um guia de uso com dez tópicos, incluindo códigos alternativos, embalagens, relatórios, etiquetas em PDF A4 e armazenamento local. O guia mantém a exportação PDF e os estilos da interface.
 
 O HTML é incorporado ao executável; não depende do arquivo em Downloads. O componente WebView2 Runtime da Microsoft precisa estar instalado (já encontrado neste computador).
 
